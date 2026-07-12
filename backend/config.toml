@@ -1,0 +1,75 @@
+# ============================================================
+# NetworkGlobe Configuration
+# ============================================================
+
+# --- Proxy Settings ---
+[proxy]
+listen_host = "127.0.0.1"
+listen_port = 8888
+ssl_insecure = false
+cert_dir = "~/.networkglobe/certs"
+
+# --- Server Settings ---
+[server]
+host = "127.0.0.1"
+port = 8085
+log_level = "INFO"
+open_browser_on_start = true
+
+# --- GeoIP Settings ---
+[geoip]
+city_db_path = "geoip/data/GeoLite2-City.mmdb"
+asn_db_path = "geoip/data/GeoLite2-ASN.mmdb"
+cache_size = 10000
+
+# --- Database Settings ---
+[database]
+backend = "sqlite"
+sqlite_path = "data/networkglobe.db"
+
+# --- Logging Settings ---
+[logging]
+level = "INFO"
+format = "pretty"
+file = "logs/networkglobe.log"
+max_size_mb = 50
+backup_count = 3
+
+# --- Theme Settings ---
+[theme]
+mode = "dark"
+accent_color = "#6366f1"
+map_style = "dark"
+
+# --- Animation Settings ---
+[animations]
+arc_duration_ms = 2000
+arc_fade_ms = 5000
+pulse_duration_ms = 1500
+enable_animations = true
+max_visible_arcs = 500
+
+# --- Performance Settings ---
+[performance]
+pipeline_batch_size = 50
+pipeline_flush_interval_ms = 500
+ws_batch_threshold = 10
+ws_batch_interval_ms = 100
+max_ws_queue_size = 1000
+frontend_ring_buffer_size = 1000
+
+# --- Capture Settings ---
+[capture]
+ignored_hosts = [
+    "localhost",
+    "127.0.0.1",
+    "*.networkglobe.local",
+]
+capture_connect = true
+max_path_length = 500
+
+# --- User Location ---
+[location]
+auto_detect = true
+latitude = 0.0
+longitude = 0.0

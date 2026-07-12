@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# NetworkGlobe specific
+backend/data/
+backend/logs/
+backend/geoip/data/*.mmdb
+*.db
+*.db-journal
+*.db-wal
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# PyInstaller
+*.spec
+build/
+dist/
+
+# Environment
+.env
+.env.local
+
+# Certificates (generated at runtime)
+certs/
