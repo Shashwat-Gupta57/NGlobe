@@ -13,11 +13,17 @@ import type { WsMessage, NetworkEvent } from '../types';
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/events`;
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
+const FLUSH_INTERVAL_MS = 150; // ~6.6 FPS UI updates
 
-export function useWebSocket() {
+export function useWebSocket(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reconnectDelayRef = useRef(RECONNECT_BASE_MS);
+  
+  // Buffer for high-throughput batching
+  const eventBufferRef = useRef<NetworkEvent[]>([]);
+  const flushIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+
   const addEvent = useRequestStore((s) => s.addEvent);
   const addEvents = useRequestStore((s) => s.addEvents);
   const setConnected = useRequestStore((s) => s.setConnected);
@@ -25,6 +31,7 @@ export function useWebSocket() {
   const setRequestsPerMinute = useRequestStore((s) => s.setRequestsPerMinute);
 
   const connect = useCallback(() => {
+    if (!enabled) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const ws = new WebSocket(WS_URL);
@@ -33,6 +40,16 @@ export function useWebSocket() {
     ws.onopen = () => {
       setConnected(true);
       reconnectDelayRef.current = RECONNECT_BASE_MS;
+      
+      // Start batching interval if not already running
+      if (!flushIntervalRef.current) {
+        flushIntervalRef.current = setInterval(() => {
+          if (eventBufferRef.current.length > 0) {
+            addEvents([...eventBufferRef.current]);
+            eventBufferRef.current = [];
+          }
+        }, FLUSH_INTERVAL_MS);
+      }
     };
 
     ws.onmessage = (e) => {
@@ -41,10 +58,10 @@ export function useWebSocket() {
 
         switch (msg.type) {
           case 'request':
-            addEvent(msg.data);
+            eventBufferRef.current.push(msg.data);
             break;
           case 'request_batch':
-            addEvents(msg.data);
+            eventBufferRef.current.push(...msg.data);
             break;
           case 'status':
             setProxyRunning(msg.data.proxy_running);
@@ -77,13 +94,20 @@ export function useWebSocket() {
     ws.onerror = () => {
       ws.close();
     };
-  }, [addEvent, addEvents, setConnected, setProxyRunning, setRequestsPerMinute]);
+  }, [enabled, addEvent, addEvents, setConnected, setProxyRunning, setRequestsPerMinute]);
 
   useEffect(() => {
-    connect();
+    if (enabled) {
+      connect();
+    }
     return () => {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      wsRef.current?.close();
+      if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
+      flushIntervalRef.current = undefined;
+      if (wsRef.current) {
+         wsRef.current.close();
+         wsRef.current = null;
+      }
     };
-  }, [connect]);
+  }, [connect, enabled]);
 }

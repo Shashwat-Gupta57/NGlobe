@@ -1,122 +1,105 @@
-# 🌐 NetworkGlobe
+<div align="center">
+  <img src="./docs/hero_placeholder.gif" alt="NGlobe Hero" width="800"/>
 
-**Real-time MITM proxy visualization platform.** Intercepts outbound HTTPS traffic, resolves geolocations, and renders every connection as an animated arc on an interactive world map.
+  <h1>NGlobe</h1>
+  <p><b>A beautiful, real-time 3D visualization of your machine's network traffic.</b></p>
 
-*GlassWire meets FlightRadar24 — but for your network requests.*
+  <p>
+    <a href="https://pypi.org/project/nglobe/"><img src="https://img.shields.io/pypi/v/nglobe.svg" alt="PyPI Version"></a>
+    <a href="https://pypi.org/project/nglobe/"><img src="https://img.shields.io/pypi/pyversions/nglobe.svg" alt="Python Versions"></a>
+    <a href="https://github.com/shashwat/nglobe/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
+  </p>
+</div>
 
----
+<br/>
 
-## Quick Start
+## The Problem
 
-### 1. Backend Setup
+Tools like Wireshark and Fiddler are incredibly powerful, but they present network traffic as endless, dense rows of text. They lack **spatial context**. When your machine communicates with the outside world, it's hard to intuitively grasp *where* your data is going, *how much* is being sent, and *how fast* the connections are occurring.
 
-```bash
-cd backend
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-pip install --trusted-host pypi.org -r requirements.txt
-```
+## Why NGlobe?
 
-### 2. GeoIP Databases (Optional but Recommended)
+**NGlobe** transforms invisible network packets into a stunning, interactive 3D globe. By intercepting your local traffic and mapping it geographically in real-time, NGlobe gives you a visceral understanding of your machine's digital footprint. 
 
-NetworkGlobe uses MaxMind GeoLite2 databases for geographic resolution.
-
-```bash
-# Create a free MaxMind account: https://www.maxmind.com/en/geolite2/signup
-# Generate a license key, then:
-
-python -m backend.geoip.download --license-key YOUR_LICENSE_KEY
-```
-
-Without GeoIP databases, requests are still captured but won't show map arcs.
-
-### 3. Start the Backend
-
-```bash
-python main.py
-```
-
-The server starts at **http://127.0.0.1:8085** with the dashboard.
-
-### 4. Frontend Development (Optional)
-
-For live frontend development with hot reload:
-
-```bash
-cd frontend
-npm install
-npm run dev       # http://localhost:5173 → proxied to backend
-```
-
-### 5. Configure Your Browser
-
-Set your browser's HTTP proxy to `127.0.0.1:8888` to route traffic through NetworkGlobe.
-
-> **Note:** You'll need to trust the mitmproxy CA certificate for HTTPS interception.
-> The certificate is auto-generated at `~/.networkglobe/certs/` on first launch.
+Watch packets fly across the globe as lasers, instantly see tracking requests routed to remote continents, and monitor your system's global connections—all through a zero-configuration, one-click installation process.
 
 ---
+
+## Features
+
+- 🌍 **Interactive 3D Globe**: Built with Deck.gl and MapLibre for buttery-smooth 60fps rendering.
+- 🚀 **Real-time Particle System**: Every network request is visualized as a physical particle flying to its destination server.
+- ⚡ **Zero-Configuration**: Simply run `nglobe start`. The built-in wizard automatically handles certificates, proxy settings, and GeoIP databases.
+- 🔍 **Live Traffic Interception**: Powered by `mitmproxy` to capture both HTTP and decrypted HTTPS traffic.
+- 📊 **Rich Analytics**: View exact IPs, autonomous systems (ASN), hostnames, and transfer volumes in a sleek sidebar.
 
 ## Architecture
 
-```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│  Browser    │────▶│  mitmproxy   │────▶│  CaptureAddon│
-│  (proxy)    │     │  :8888       │     │  (extractor) │
-└─────────────┘     └──────────────┘     └──────┬───────┘
-                                                │ RawFlowEvent
-                                                ▼
-                                        ┌──────────────┐
-                                        │ EventPipeline│
-                                        │ + GeoIP      │
-                                        └──────┬───────┘
-                                               │ NetworkEvent
-                                               ▼
-                                        ┌──────────────┐
-                                        │   EventBus   │
-                                        └──┬────────┬──┘
-                                           │        │
-                              ┌────────────┘        └────────────┐
-                              ▼                                  ▼
-                      ┌──────────────┐                   ┌──────────────┐
-                      │ BatchWriter  │                   │ WebSocket    │
-                      │ (SQLite)     │                   │ Manager      │
-                      └──────────────┘                   └──────┬───────┘
-                                                                │ JSON
-                                                                ▼
-                                                        ┌──────────────┐
-                                                        │ React + Map  │
-                                                        │ Dashboard    │
-                                                        └──────────────┘
+```mermaid
+graph LR
+    A[Your Browser / Apps] -->|HTTPS| B(NGlobe MITM Proxy)
+    B -->|Decrypted Request| C{Event Pipeline}
+    C -->|IP Lookup| D[(MaxMind GeoLite2)]
+    D -->|Enriched Event| C
+    C -->|WebSocket Batch| E[React Deck.gl Frontend]
+    C -->|Async Write| F[(SQLite History)]
 ```
 
-## Configuration
+## Technology Stack
 
-Edit `backend/config.toml` to customize:
+- **Backend**: Python 3.11+, FastAPI, Mitmproxy, SQLite (SQLModel)
+- **Frontend**: React, TypeScript, TailwindCSS, Zustand
+- **Visualization**: Deck.gl, MapLibre GL JS, Framer Motion
 
-| Section        | Key                | Default       | Description                     |
-|----------------|--------------------|--------------:|---------------------------------|
-| `proxy`        | `listen_port`      | `8888`        | Proxy listen port               |
-| `server`       | `port`             | `8085`        | Dashboard server port           |
-| `geoip`        | `cache_size`       | `10000`       | IP lookup LRU cache size        |
-| `animations`   | `max_visible_arcs` | `500`         | Max arcs rendered on map        |
-| `performance`  | `pipeline_batch_size`| `50`        | DB write batch size             |
-| `capture`      | `ignored_hosts`    | `[localhost]` | Hosts to skip capturing         |
+---
 
-## Tech Stack
+## Installation & Quick Start
 
-| Layer      | Technology                                  |
-|------------|---------------------------------------------|
-| Proxy      | mitmproxy 11                                |
-| Backend    | Python 3.13, FastAPI, Uvicorn, aiosqlite    |
-| Database   | SQLite (WAL mode, batched writes)           |
-| GeoIP      | MaxMind GeoLite2 + maxminddb                |
-| Frontend   | React 19, TypeScript, Vite                  |
-| Styling    | TailwindCSS v4, Framer Motion               |
-| Map        | MapLibre GL JS + deck.gl (ArcLayer)         |
-| Charts     | Recharts                                    |
-| State      | Zustand                                     |
+NGlobe is available as a standard Python package.
+
+```bash
+pip install nglobe
+```
+
+To launch the application:
+
+```bash
+nglobe start
+```
+
+### First-Run Setup
+
+Upon your first launch, NGlobe will open a beautiful interactive wizard in your browser (`http://localhost:8000`) that will:
+1. **Install the CA Certificate**: Required to intercept HTTPS traffic. You will be prompted by Windows UAC to allow the installation.
+2. **Download GeoLite2 Databases**: Enter your free [MaxMind Account ID and License Key](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data), and NGlobe will automatically download and configure the IP mapping databases.
+
+That's it! NGlobe will automatically configure your system proxy and start visualizing your traffic.
+
+---
+
+## Roadmap
+
+- [ ] Support for macOS and Linux proxy auto-configuration.
+- [ ] Protocol filtering (e.g., only show REST API calls).
+- [ ] Historical playback mode (scrub through past traffic).
+- [ ] Custom particle colors based on payload size or HTTP status code.
+
+## Performance
+
+NGlobe is engineered for extreme throughput. The backend utilizes asynchronous pipelines and SQLite batching, while the frontend employs a WebSocket event buffer that batches state updates. This allows NGlobe to render hundreds of concurrent connections per second without lagging the browser.
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to set up the development environment, build the frontend, and submit Pull Requests.
+
+## FAQ
+
+**Q: Does NGlobe send my data anywhere?**  
+A: **No.** NGlobe is entirely local. The proxy runs on `127.0.0.1`, the SQLite database is stored in your `~/.nglobe` folder, and the frontend is served locally. MaxMind databases are downloaded directly to your machine for offline IP resolution.
+
+**Q: Why do I need to install a certificate?**  
+A: To see the full URL and payload of HTTPS traffic, NGlobe acts as a Man-In-The-Middle (MITM) proxy. Without the certificate, NGlobe would only see the destination IP address, but not the domain or specific path.
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

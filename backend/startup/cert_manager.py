@@ -17,8 +17,8 @@ logger = get_logger(__name__)
 class CertManager:
     """Manages the mitmproxy CA certificate lifecycle.
 
-    NetworkGlobe uses its own certificate directory to avoid
-    interfering with any existing mitmproxy installation.
+    NetworkGlobe reuses the standard mitmproxy certificate directory
+    to ensure browsers that already trust mitmproxy work seamlessly.
     """
 
     def __init__(self, cert_dir: str) -> None:

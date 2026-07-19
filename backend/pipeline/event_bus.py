@@ -43,6 +43,7 @@ class EventBus:
     async def publish(self, event: NetworkEvent) -> None:
         """Publish an event to all subscribers concurrently."""
         self._event_count += 1
+        logger.debug("event_bus_publishing", host=event.hostname, subs=len(self._subscribers))
 
         if not self._subscribers:
             return

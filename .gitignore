@@ -43,5 +43,12 @@ dist/
 .env
 .env.local
 
+# Build artifacts
+frontend/dist/
+src/nglobe/ui/
+build/
+dist/
+*.egg-info/
+
 # Certificates (generated at runtime)
 certs/

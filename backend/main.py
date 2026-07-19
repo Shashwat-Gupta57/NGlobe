@@ -15,7 +15,14 @@ _project_root = str(Path(__file__).resolve().parent.parent)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-import uvicorn
+try:
+    import uvicorn
+except ImportError:
+    print("ERROR: Missing dependencies (uvicorn not found).")
+    print("Are you running within the virtual environment?")
+    print("Run: .venv\\Scripts\\activate (Windows) or source .venv/bin/activate (Mac/Linux)")
+    print("Then try: python main.py")
+    sys.exit(1)
 
 from backend.api.app import create_app
 from backend.config import load_config
@@ -36,7 +43,7 @@ def main() -> None:
 
     logger.info(
         "networkglobe_starting",
-        version="0.1.0",
+        version="0.2.0",
         server_host=config.server.host,
         server_port=config.server.port,
         proxy_port=config.proxy.listen_port,

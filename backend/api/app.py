@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.api.routes import analytics, health, requests, settings, ws
+from backend.api.routes import analytics, health, requests, settings, ws, geoip
 from backend.config import AppConfig
 from backend.startup.orchestrator import StartupOrchestrator
 from backend.utils.logging import get_logger
@@ -54,7 +54,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app = FastAPI(
         title="NetworkGlobe",
         description="Real-time MITM proxy visualization platform",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
     )
 
@@ -74,6 +74,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.include_router(requests.router, prefix="/api")
     app.include_router(analytics.router, prefix="/api")
     app.include_router(settings.router, prefix="/api")
+    app.include_router(geoip.router, prefix="/api")
     app.include_router(ws.router)
 
     # ── Serve React frontend (production only) ──────────────────

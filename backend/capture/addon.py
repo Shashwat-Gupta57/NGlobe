@@ -45,6 +45,7 @@ class CaptureAddon:
 
     def request(self, flow: http.HTTPFlow) -> None:
         """Called when a client request is received."""
+        logger.debug("capture_addon_request", host=flow.request.pretty_host, path=flow.request.path)
         # Record start time for latency calculation
         self._flow_start_times[flow.id] = time.monotonic()
 
@@ -56,7 +57,9 @@ class CaptureAddon:
         """
         try:
             hostname = flow.request.pretty_host
+            logger.debug("capture_addon_response", host=hostname, status=flow.response.status_code if flow.response else None)
             if self._should_ignore(hostname):
+                logger.debug("capture_addon_ignored", host=hostname)
                 return
 
             event = self._extract_metadata(flow)
@@ -64,6 +67,7 @@ class CaptureAddon:
             asyncio.run_coroutine_threadsafe(
                 self._queue.put(event), self._main_loop
             )
+            logger.debug("capture_addon_queued", host=hostname)
             self._captured_count += 1
 
             if self._captured_count % 100 == 0:

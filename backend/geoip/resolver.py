@@ -86,10 +86,19 @@ class GeoIPResolver:
         """
         self._lookup_count += 1
 
-        if not ip or self._is_private(ip):
+        if not ip:
+            logger.debug("geoip_resolve_failed", reason="Empty IP address")
+            return GeoLocation()
+            
+        if self._is_private(ip):
+            logger.debug("geoip_resolve_failed", ip=ip, reason="Private/reserved IP address")
             return GeoLocation()
 
-        return self._cached_resolve(ip)
+        result = self._cached_resolve(ip)
+        if result.latitude is None or result.longitude is None:
+            logger.debug("geoip_resolve_failed", ip=ip, reason="Coordinates not found in database")
+            
+        return result
 
     def _resolve_uncached(self, ip: str) -> GeoLocation:
         """Perform the actual GeoIP lookup (called by cache on miss)."""

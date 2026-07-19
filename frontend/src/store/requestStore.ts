@@ -71,7 +71,8 @@ export const useRequestStore = create<RequestStore>((set, get) => ({
 
   addEvent: (event) => {
     const { events, filters, maxEvents } = get();
-    const updated = [event, ...events].slice(0, maxEvents);
+    const stamped = { ...event, _receivedAt: Date.now() };
+    const updated = [stamped, ...events].slice(0, maxEvents);
     const filtered = applyFilters(updated, filters);
     set({
       events: updated,
@@ -82,7 +83,9 @@ export const useRequestStore = create<RequestStore>((set, get) => ({
 
   addEvents: (newEvents) => {
     const { events, filters, maxEvents } = get();
-    const updated = [...newEvents, ...events].slice(0, maxEvents);
+    const now = Date.now();
+    const stamped = newEvents.map(e => ({ ...e, _receivedAt: now }));
+    const updated = [...stamped, ...events].slice(0, maxEvents);
     const filtered = applyFilters(updated, filters);
     set({
       events: updated,

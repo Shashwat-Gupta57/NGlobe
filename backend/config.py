@@ -36,7 +36,7 @@ class ProxyConfig(BaseModel):
     listen_host: str = "127.0.0.1"
     listen_port: int = 8888
     ssl_insecure: bool = False
-    cert_dir: str = "~/.networkglobe/certs"
+    cert_dir: str = "~/.mitmproxy"
 
 
 class ServerConfig(BaseModel):

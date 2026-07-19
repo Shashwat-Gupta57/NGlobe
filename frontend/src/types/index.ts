@@ -45,6 +45,9 @@ export interface NetworkEvent {
 
   // Future: Tagging
   tags: string[];
+
+  // Client-side stamp (set when event arrives via WebSocket)
+  _receivedAt?: number;
 }
 
 /** WebSocket message types from server → client */

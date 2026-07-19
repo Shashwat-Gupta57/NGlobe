@@ -29,7 +29,7 @@ export default function Header() {
           <span className="header-logo-icon">🌐</span>
           <h1 className="header-title">NetworkGlobe</h1>
         </div>
-        <span className="header-version">v0.1.0</span>
+        <span className="header-version">v0.2.0</span>
       </div>
 
       <div className="header-center">

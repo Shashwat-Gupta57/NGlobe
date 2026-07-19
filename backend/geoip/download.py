@@ -1,115 +1,67 @@
-"""GeoIP database download helper.
+"""Downloads and extracts MaxMind GeoLite2 databases."""
 
-Downloads GeoLite2 City and ASN databases from MaxMind.
-Requires a MaxMind license key (free account at https://www.maxmind.com).
-
-Usage:
-    python -m backend.geoip.download --license-key YOUR_KEY
-
-Or set the MAXMIND_LICENSE_KEY environment variable:
-    set MAXMIND_LICENSE_KEY=YOUR_KEY
-    python -m backend.geoip.download
-"""
-
-from __future__ import annotations
-
-import argparse
-import io
 import os
-import shutil
-import sys
 import tarfile
+import tempfile
 import urllib.request
 from pathlib import Path
 
-# GeoLite2 download URLs
-CITY_URL = "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key={key}&suffix=tar.gz"
-ASN_URL = "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN&license_key={key}&suffix=tar.gz"
+from backend.utils.logging import get_logger
+from backend.utils.resource_path import get_resource_path
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
+logger = get_logger(__name__)
 
+class GeoIPDownloader:
+    """Downloader for GeoLite2 City and ASN databases."""
 
-def download_and_extract(url: str, db_name: str, data_dir: Path) -> None:
-    """Download a GeoLite2 database archive and extract the .mmdb file."""
-    print(f"  Downloading {db_name}...")
-    try:
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=60) as response:
-            archive_data = response.read()
-    except Exception as e:
-        print(f"  ✗ Failed to download {db_name}: {e}")
-        return
+    def __init__(self, account_id: str, license_key: str):
+        self.account_id = account_id
+        self.license_key = license_key
+        # Use resource path logic so it works natively and in PyInstaller
+        self.data_dir = get_resource_path("geoip/data")
 
-    print(f"  Extracting {db_name}...")
-    try:
-        with tarfile.open(fileobj=io.BytesIO(archive_data), mode="r:gz") as tar:
-            for member in tar.getmembers():
-                if member.name.endswith(".mmdb"):
-                    # Extract just the .mmdb file
-                    member.name = Path(member.name).name
-                    tar.extract(member, path=str(data_dir))
-                    print(f"  ✓ Saved {data_dir / member.name}")
-                    return
-        print(f"  ✗ No .mmdb file found in archive")
-    except Exception as e:
-        print(f"  ✗ Failed to extract {db_name}: {e}")
+    def download_all(self) -> bool:
+        """Download both City and ASN databases."""
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            city_success = self._download_db("GeoLite2-City")
+            asn_success = self._download_db("GeoLite2-ASN")
+            return city_success and asn_success
+        except Exception as e:
+            logger.error("geoip_download_failed", error=str(e))
+            return False
 
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Download GeoLite2 databases")
-    parser.add_argument(
-        "--license-key",
-        default=os.environ.get("MAXMIND_LICENSE_KEY", ""),
-        help="MaxMind license key (or set MAXMIND_LICENSE_KEY env var)",
-    )
-    args = parser.parse_args()
-
-    if not args.license_key:
-        print("╔══════════════════════════════════════════════════════╗")
-        print("║          GeoLite2 Database Download                 ║")
-        print("╠══════════════════════════════════════════════════════╣")
-        print("║                                                     ║")
-        print("║  A MaxMind license key is required.                 ║")
-        print("║                                                     ║")
-        print("║  1. Create a free account at:                       ║")
-        print("║     https://www.maxmind.com/en/geolite2/signup      ║")
-        print("║                                                     ║")
-        print("║  2. Generate a license key at:                      ║")
-        print("║     https://www.maxmind.com/en/accounts/current/    ║")
-        print("║     license-key                                     ║")
-        print("║                                                     ║")
-        print("║  3. Run this script again:                          ║")
-        print("║     python -m backend.geoip.download \\              ║")
-        print("║       --license-key YOUR_KEY                        ║")
-        print("║                                                     ║")
-        print("║  Or set the environment variable:                   ║")
-        print("║     set MAXMIND_LICENSE_KEY=YOUR_KEY                ║")
-        print("║                                                     ║")
-        print("║  NetworkGlobe works without GeoIP databases but     ║")
-        print("║  arc destinations won't be plotted on the map.      ║")
-        print("║                                                     ║")
-        print("╚══════════════════════════════════════════════════════╝")
-        sys.exit(1)
-
-    # Ensure data directory exists
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-    print(f"\n📍 Downloading GeoLite2 databases to {DATA_DIR}\n")
-
-    download_and_extract(
-        CITY_URL.format(key=args.license_key),
-        "GeoLite2-City",
-        DATA_DIR,
-    )
-
-    download_and_extract(
-        ASN_URL.format(key=args.license_key),
-        "GeoLite2-ASN",
-        DATA_DIR,
-    )
-
-    print("\n✓ Done! Restart NetworkGlobe to use the new databases.\n")
-
-
-if __name__ == "__main__":
-    main()
+    def _download_db(self, edition_id: str) -> bool:
+        url = f"https://download.maxmind.com/geoip/databases/{edition_id}/download?suffix=tar.gz"
+        
+        logger.info("geoip_download_started", edition=edition_id)
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz") as tmp:
+                req = urllib.request.Request(url)
+                
+                # Basic Auth
+                import base64
+                auth_str = f"{self.account_id}:{self.license_key}"
+                auth_bytes = auth_str.encode("utf-8")
+                auth_b64 = base64.b64encode(auth_bytes).decode("utf-8")
+                req.add_header("Authorization", f"Basic {auth_b64}")
+                
+                with urllib.request.urlopen(req) as response, open(tmp.name, 'wb') as out_file:
+                    out_file.write(response.read())
+                
+                with tarfile.open(tmp.name, "r:gz") as tar:
+                    for member in tar.getmembers():
+                        if member.name.endswith(".mmdb"):
+                            # Extract directly to the target path without the parent directory
+                            target_path = self.data_dir / f"{edition_id}.mmdb"
+                            # We can't use tar.extract directly to a specific filename easily
+                            with tar.extractfile(member) as source, open(target_path, "wb") as dest:
+                                dest.write(source.read())
+                            logger.info("geoip_extracted", path=str(target_path))
+                            break
+                            
+            os.unlink(tmp.name)
+            return True
+        except Exception as e:
+            logger.error("geoip_download_error", edition=edition_id, error=str(e))
+            return False

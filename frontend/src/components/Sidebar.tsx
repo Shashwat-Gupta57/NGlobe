@@ -2,10 +2,9 @@
  * Sidebar — live feed of captured requests with search and filters.
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRequestStore } from '../store/requestStore';
-import type { NetworkEvent } from '../types';
 
 function getMethodColor(method: string | null): string {
   switch (method) {
@@ -43,7 +42,6 @@ function getCountryFlag(code: string | null): string {
 export default function Sidebar() {
   const filteredEvents = useRequestStore((s) => s.filteredEvents);
   const setFilters = useRequestStore((s) => s.setFilters);
-  const filters = useRequestStore((s) => s.filters);
   const selectedEvent = useRequestStore((s) => s.selectedEvent);
   const setSelectedEvent = useRequestStore((s) => s.setSelectedEvent);
   const [search, setSearch] = useState('');

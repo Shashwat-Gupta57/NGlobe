@@ -30,3 +30,16 @@ async def get_settings(config: AppConfig = Depends(get_config)) -> dict:
 async def get_location(config: AppConfig = Depends(get_config)) -> dict:
     """Get user location settings."""
     return config.location.model_dump()
+
+
+@router.post("/install-cert")
+async def install_certificate(config: AppConfig = Depends(get_config)) -> dict:
+    """Attempt to install the CA certificate into the Windows root store."""
+    from backend.startup.cert_manager import CertManager
+    from backend.startup.cert_installer import CertInstaller
+    
+    cert_mgr = CertManager(config.proxy.cert_dir)
+    cert_path = cert_mgr.get_ca_cert_for_install()
+    
+    success = CertInstaller.install(cert_path)
+    return {"success": success}

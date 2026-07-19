@@ -27,6 +27,7 @@ from backend.pipeline.event_bus import EventBus
 from backend.pipeline.event_pipeline import EventPipeline
 from backend.startup.cert_manager import CertManager
 from backend.startup.conflict_checker import ConflictChecker
+from backend.startup.proxy_manager import ProxyManager
 from backend.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -52,6 +53,15 @@ class StartupOrchestrator:
         self._ws_manager: Optional[WebSocketManager] = None
         self._query_reader: Optional[QueryReader] = None
         self._event_queue: Optional[asyncio.Queue[RawFlowEvent]] = None
+        self._proxy_manager: Optional[ProxyManager] = None
+        
+        self.startup_status = {
+            "step": "initializing",
+            "proxy_enabled": False,
+            "cert_installed": False,
+            "geoip_loaded": False,
+            "db_connected": False,
+        }
 
     async def startup(self) -> dict:
         """Execute the full boot sequence.
@@ -60,6 +70,7 @@ class StartupOrchestrator:
             Dictionary of subsystem references to store on app.state.
         """
         logger.info("startup_begin")
+        self.startup_status["step"] = "Checking conflicts"
 
         # 1. Conflict check
         checker = ConflictChecker(
@@ -76,23 +87,32 @@ class StartupOrchestrator:
             # Don't abort — continue without proxy. User can restart later.
 
         # 2. Certificate management
+        self.startup_status["step"] = "Checking certificates"
         cert_mgr = CertManager(self._config.proxy.cert_dir)
         cert_mgr.ensure_cert_dir()
         cert_mgr.log_cert_status()
+        
+        from backend.startup.cert_installer import CertInstaller
+        self.startup_status["cert_installed"] = CertInstaller.is_installed()
 
         # 3. Database
+        self.startup_status["step"] = "Connecting database"
         self._db = DatabaseConnection(self._config.database.sqlite_path)
         await self._db.open()
+        self.startup_status["db_connected"] = True
 
         # 4. GeoIP resolver
+        self.startup_status["step"] = "Loading GeoIP database"
         self._geo_resolver = GeoIPResolver(
             city_db_path=self._config.geoip.city_db_path,
             asn_db_path=self._config.geoip.asn_db_path,
             cache_size=self._config.geoip.cache_size,
         )
         self._geo_resolver.open()
+        self.startup_status["geoip_loaded"] = self._geo_resolver.is_available
 
         # 5. Event bus + subscribers
+        self.startup_status["step"] = "Starting event bus"
         self._event_bus = EventBus()
         self._ws_manager = WebSocketManager(
             max_queue_size=self._config.performance.max_ws_queue_size,
@@ -108,6 +128,7 @@ class StartupOrchestrator:
         self._event_bus.subscribe(self._batch_writer.on_event)
 
         # 6. Event pipeline
+        self.startup_status["step"] = "Starting pipeline"
         self._event_queue = asyncio.Queue()
         self._pipeline = EventPipeline(
             queue=self._event_queue,
@@ -120,6 +141,7 @@ class StartupOrchestrator:
         await self._pipeline.start()
 
         # 7. Proxy runner (only if no conflict)
+        self.startup_status["step"] = "Starting proxy"
         if not conflict.has_conflict:
             main_loop = asyncio.get_running_loop()
             self._proxy_runner = ProxyRunner(
@@ -130,10 +152,16 @@ class StartupOrchestrator:
                 confdir=str(cert_mgr.cert_dir),
             )
             self._proxy_runner.start()
+            
+            # Windows Proxy Management
+            self._proxy_manager = ProxyManager(self._config.proxy.listen_host, self._config.proxy.listen_port)
+            self._proxy_manager.enable()
+            self.startup_status["proxy_enabled"] = self._proxy_manager.is_enabled
         else:
             logger.warning("proxy_skipped_due_to_conflict")
 
         # 8. Query reader
+        self.startup_status["step"] = "Complete"
         self._query_reader = QueryReader(db=self._db)
 
         logger.info(
@@ -151,11 +179,15 @@ class StartupOrchestrator:
             "batch_writer": self._batch_writer,
             "ws_manager": self._ws_manager,
             "query_reader": self._query_reader,
+            "orchestrator": self,
         }
 
     async def shutdown(self) -> None:
         """Graceful shutdown of all subsystems in reverse order."""
         logger.info("shutdown_begin")
+
+        if self._proxy_manager:
+            self._proxy_manager.restore()
 
         if self._proxy_runner:
             self._proxy_runner.stop()

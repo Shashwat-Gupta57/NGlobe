@@ -21,11 +21,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-function getFlag(code: string | null): string {
-  if (!code || code.length !== 2) return '🌍';
-  const offset = 127397;
-  return String.fromCodePoint(...[...code.toUpperCase()].map(c => c.charCodeAt(0) + offset));
-}
+// getFlag unused - removed
 
 export default function AnalyticsPanel() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
@@ -101,7 +97,7 @@ export default function AnalyticsPanel() {
                       tickFormatter={(v: string) => v.length > 8 ? v.slice(0, 8) + '…' : v} />
                     <Tooltip
                       contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#f1f5f9', fontSize: 12 }}
-                      formatter={(value: number) => [value.toLocaleString(), 'Requests']}
+                      formatter={(value: any) => [Number(value).toLocaleString(), 'Requests']}
                     />
                     <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                       {countries.map((_, i) => (
@@ -127,8 +123,8 @@ export default function AnalyticsPanel() {
                       cy="50%"
                       outerRadius={65}
                       strokeWidth={0}
-                      label={({ organization }: { organization: string }) =>
-                        organization.length > 12 ? organization.slice(0, 12) + '…' : organization
+                      label={({ name }: any) =>
+                        name.length > 12 ? name.slice(0, 12) + '…' : name
                       }
                     >
                       {orgs.slice(0, 6).map((_, i) => (
@@ -137,7 +133,7 @@ export default function AnalyticsPanel() {
                     </Pie>
                     <Tooltip
                       contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#f1f5f9', fontSize: 12 }}
-                      formatter={(value: number) => [value.toLocaleString(), 'Requests']}
+                      formatter={(value: any) => [Number(value).toLocaleString(), 'Requests']}
                     />
                   </PieChart>
                 </ResponsiveContainer>

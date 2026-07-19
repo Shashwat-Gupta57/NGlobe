@@ -68,8 +68,19 @@ class EventPipeline:
                 raw_event = await asyncio.wait_for(
                     self._queue.get(), timeout=1.0
                 )
+                logger.debug("pipeline_dequeued", host=raw_event.hostname)
                 event = self._build_network_event(raw_event)
+                logger.info(
+                    "pipeline_event_built", 
+                    host=event.hostname, 
+                    dest_ip=event.destination_ip, 
+                    country=event.country_name, 
+                    city=event.city, 
+                    lat=event.latitude, 
+                    lon=event.longitude
+                )
                 await self._event_bus.publish(event)
+                logger.debug("pipeline_published", host=event.hostname)
                 self._processed_count += 1
                 self._queue.task_done()
             except asyncio.TimeoutError:

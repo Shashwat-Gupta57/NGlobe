@@ -33,6 +33,7 @@ class WebSocketManager:
         self._max_queue_size = max_queue_size
         self._start_time = time.time()
         self._total_events_broadcast = 0
+        self._total_dropped_events = 0
 
     async def connect(self, websocket: WebSocket) -> str:
         """Accept a WebSocket connection and start its send loop."""
@@ -59,6 +60,7 @@ class WebSocketManager:
 
     async def broadcast(self, event: NetworkEvent) -> None:
         """Broadcast a NetworkEvent to all connected clients (EventBus subscriber)."""
+        logger.debug("ws_manager_broadcasting", host=event.hostname, clients=len(self._connections))
         if not self._connections:
             return
 
@@ -75,6 +77,7 @@ class WebSocketManager:
                         try:
                             queue.get_nowait()
                             dropped += 1
+                            self._total_dropped_events += 1
                         except asyncio.QueueEmpty:
                             break
                     logger.warning("ws_backpressure", client_id=client_id, dropped=dropped)
@@ -136,3 +139,8 @@ class WebSocketManager:
     def total_broadcast(self) -> int:
         """Total events broadcast."""
         return self._total_events_broadcast
+
+    @property
+    def total_dropped_events(self) -> int:
+        """Total events dropped due to backpressure."""
+        return self._total_dropped_events
