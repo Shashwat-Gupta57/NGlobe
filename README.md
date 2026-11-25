@@ -29,7 +29,7 @@ Watch packets fly across the globe as lasers, instantly see tracking requests ro
 
 - 🌍 **Interactive 3D Globe**: Built with Deck.gl and MapLibre for buttery-smooth 60fps rendering.
 - 🚀 **Real-time Particle System**: Every network request is visualized as a physical particle flying to its destination server.
-- ⚡ **Zero-Configuration**: Simply run `nglobe start`. The built-in wizard automatically handles certificates, proxy settings, and GeoIP databases.
+- ⚡ **Zero-Configuration**: Double-click `NGlobe.exe`. Proxy settings are handled for you and GeoIP data is bundled; the HTTPS certificate is optional.
 - 🔍 **Live Traffic Interception**: Powered by `mitmproxy` to capture both HTTP and decrypted HTTPS traffic.
 - 📊 **Rich Analytics**: View exact IPs, autonomous systems (ASN), hostnames, and transfer volumes in a sleek sidebar.
 
@@ -47,7 +47,7 @@ graph LR
 
 ## Technology Stack
 
-- **Backend**: Python 3.11+, FastAPI, Mitmproxy, SQLite (SQLModel)
+- **Backend**: Python 3.10+, FastAPI, Mitmproxy, SQLite
 - **Frontend**: React, TypeScript, TailwindCSS, Zustand
 - **Visualization**: Deck.gl, MapLibre GL JS, Framer Motion
 
@@ -55,25 +55,32 @@ graph LR
 
 ## Installation & Quick Start
 
-NGlobe is available as a standard Python package.
+**Just run it:** double-click `NGlobe.exe`. Your browser opens on the globe and traffic starts flowing in.
+Close the console window to stop. Your Windows proxy settings are put back automatically,
+even after a crash (on the next launch).
+
+**Build the exe yourself** (needs Python 3.10+ and Node.js): double-click `build.cmd` → `dist\NGlobe.exe`.
+
+**Or run from source:**
 
 ```bash
-pip install nglobe
+cd frontend && npm ci && npm run build && cd ..   # builds the UI into src/nglobe/ui
+pip install -e .
+python -m nglobe                                   # or: nglobe
 ```
 
-To launch the application:
+### First run
 
-```bash
-nglobe start
-```
+- **Works immediately.** NGlobe maps every connection your machine makes (host, IP, city, network owner).
+  GeoLite2 databases are bundled, so there's nothing to download.
+- **Optional: full HTTPS detail.** Click *Trust Certificate* in the wizard (or *Enable HTTPS details* in the
+  top bar later) to also see each request's path, status and size. Windows asks you to confirm; no admin rights
+  needed. Apps that refuse interception (certificate pinning) switch to pass-through automatically instead of breaking.
 
-### First-Run Setup
+### Configuration
 
-Upon your first launch, NGlobe will open a beautiful interactive wizard in your browser (`http://localhost:8000`) that will:
-1. **Install the CA Certificate**: Required to intercept HTTPS traffic. You will be prompted by Windows UAC to allow the installation.
-2. **Download GeoLite2 Databases**: Enter your free [MaxMind Account ID and License Key](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data), and NGlobe will automatically download and configure the IP mapping databases.
-
-That's it! NGlobe will automatically configure your system proxy and start visualizing your traffic.
+Optional. Copy `src/nglobe/config.toml` to `~/.nglobe/config.toml` and edit it, or use environment variables
+such as `NETWORKGLOBE_SERVER__PORT=9000`. The database, logs and downloaded GeoIP data live in `~/.nglobe/`.
 
 ---
 
@@ -95,10 +102,10 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 ## FAQ
 
 **Q: Does NGlobe send my data anywhere?**  
-A: **No.** NGlobe is entirely local. The proxy runs on `127.0.0.1`, the SQLite database is stored in your `~/.nglobe` folder, and the frontend is served locally. MaxMind databases are downloaded directly to your machine for offline IP resolution.
+A: **No.** The proxy runs on `127.0.0.1`, the SQLite database lives in `~/.nglobe`, the UI is served locally, and IP lookups use offline databases. The one outbound call NGlobe makes itself is to `api.ipify.org`, once per run, to find your public IP for the globe's starting point. Set `location.auto_detect = false` to turn it off. (Map tiles load from CARTO.)
 
 **Q: Why do I need to install a certificate?**  
-A: To see the full URL and payload of HTTPS traffic, NGlobe acts as a Man-In-The-Middle (MITM) proxy. Without the certificate, NGlobe would only see the destination IP address, but not the domain or specific path.
+A: You don't have to. Without it, NGlobe still sees every connection's host and destination. With it, NGlobe decrypts HTTPS locally (as a man-in-the-middle proxy) to also show each request's path, status and size.
 
 ## License
 

@@ -3,7 +3,10 @@
  */
 
 import { motion } from 'framer-motion';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRequestStore } from '../store/requestStore';
+
+const getJson = (url: string) => fetch(url).then((r) => r.json());
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -15,10 +18,18 @@ function formatBytes(bytes: number): string {
 
 export default function Header() {
   const isConnected = useRequestStore((s) => s.isConnected);
-  const proxyRunning = useRequestStore((s) => s.proxyRunning);
   const totalCount = useRequestStore((s) => s.totalCount);
-  const requestsPerMinute = useRequestStore((s) => s.requestsPerMinute);
   const events = useRequestStore((s) => s.events);
+  const queryClient = useQueryClient();
+  const { data: health } = useQuery({ queryKey: ['health'], queryFn: () => getJson('/api/health') });
+  const { data: summary } = useQuery({ queryKey: ['summary'], queryFn: () => getJson('/api/analytics/summary') });
+  const installCert = useMutation({
+    mutationFn: () => fetch('/api/setup/certificate', { method: 'POST' }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['health'] }),
+  });
+  const proxyRunning = !!health?.proxy_running;
+  const decrypting = !!health?.certificate_installed;
+  const requestsPerMinute = summary?.requests_per_minute ?? 0;
 
   const totalBytes = events.reduce((sum, e) => sum + e.bytes_sent + e.bytes_received, 0);
 
@@ -27,9 +38,9 @@ export default function Header() {
       <div className="header-left">
         <div className="header-logo">
           <span className="header-logo-icon">🌐</span>
-          <h1 className="header-title">NetworkGlobe</h1>
+          <h1 className="header-title">NGlobe</h1>
         </div>
-        <span className="header-version">v0.2.0</span>
+        {health?.version && <span className="header-version">v{health.version}</span>}
       </div>
 
       <div className="header-center">
@@ -39,6 +50,17 @@ export default function Header() {
       </div>
 
       <div className="header-right">
+        {health && !decrypting && (
+          <button
+            className="stat-badge"
+            style={{ cursor: 'pointer' }}
+            disabled={installCert.isPending}
+            onClick={() => installCert.mutate()}
+            title="Trust NGlobe's certificate to see full HTTPS request details (path, status, size)"
+          >
+            {installCert.isPending ? 'Waiting for Windows…' : 'Enable HTTPS details'}
+          </button>
+        )}
         <motion.div
           className="status-indicator"
           animate={{ opacity: [0.5, 1, 0.5] }}
@@ -55,7 +77,7 @@ export default function Header() {
             }}
           />
           <span className="status-text">
-            {proxyRunning ? 'Intercepting' : isConnected ? 'Connected' : 'Disconnected'}
+            {!isConnected ? 'Disconnected' : !proxyRunning ? 'Proxy stopped' : decrypting ? 'Intercepting HTTPS' : 'Watching connections'}
           </span>
         </motion.div>
       </div>

@@ -199,7 +199,7 @@ class QueryReader:
         rate_row = await self._db.fetchone("""
             SELECT COUNT(*) as recent
             FROM requests
-            WHERE timestamp >= datetime('now', '-60 seconds')
+            WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%S', 'now', '-60 seconds')
         """)
         result["requests_per_minute"] = rate_row["recent"] if rate_row else 0
 

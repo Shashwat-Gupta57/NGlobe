@@ -66,9 +66,3 @@ class NetworkEvent(BaseModel):
 
     # ── Future: Tagging / Labeling ──────────────────────────────
     tags: list[str] = Field(default_factory=list)  # e.g., ["cdn", "analytics"]
-
-    model_config = {
-        "json_encoders": {
-            datetime: lambda v: v.isoformat(),
-        },
-    }

@@ -1,18 +1,16 @@
-"""Startup orchestrator — manages the full NetworkGlobe boot sequence.
+"""Startup orchestrator — manages the full NGlobe boot sequence.
 
-Coordinates initialization of all subsystems in the correct order:
-1. Conflict check (port + process)
-2. Certificate verification
-3. Database connection
-4. GeoIP resolver
-5. Event pipeline + bus
-6. Proxy launch
-7. WebSocket manager
+1. Recover proxy settings left behind by a crashed run
+2. Certificate check (decides decrypt vs pass-through)
+3. Database, GeoIP, event bus + pipeline
+4. Proxy launch (on a free port) + Windows system proxy
 """
 
 from __future__ import annotations
 
 import asyncio
+import socket
+from pathlib import Path
 from typing import Optional
 
 from nglobe.api.websocket.manager import WebSocketManager
@@ -25,8 +23,8 @@ from nglobe.database.writer import BatchWriter
 from nglobe.geoip.resolver import GeoIPResolver
 from nglobe.pipeline.event_bus import EventBus
 from nglobe.pipeline.event_pipeline import EventPipeline
-from nglobe.startup.cert_manager import CertManager
-from nglobe.startup.conflict_checker import ConflictChecker
+from nglobe.startup import proxy_manager
+from nglobe.startup.cert_installer import CertInstaller, cert_path
 from nglobe.startup.proxy_manager import ProxyManager
 from nglobe.utils.logging import get_logger
 
@@ -70,30 +68,14 @@ class StartupOrchestrator:
             Dictionary of subsystem references to store on app.state.
         """
         logger.info("startup_begin")
-        self.startup_status["step"] = "Checking conflicts"
+        if proxy_manager.recover():
+            logger.warning("restored_proxy_settings_from_previous_crash")
 
-        # 1. Conflict check
-        checker = ConflictChecker(
-            self._config.proxy.listen_host,
-            self._config.proxy.listen_port,
-        )
-        conflict = checker.check()
-        if conflict.has_conflict:
-            logger.warning(
-                "startup_conflict_detected",
-                conflict_type=conflict.conflict_type,
-                details=conflict.details,
-            )
-            # Don't abort — continue without proxy. User can restart later.
-
-        # 2. Certificate management
         self.startup_status["step"] = "Checking certificates"
-        cert_mgr = CertManager(self._config.proxy.cert_dir)
-        cert_mgr.ensure_cert_dir()
-        cert_mgr.log_cert_status()
-        
-        from nglobe.startup.cert_installer import CertInstaller
-        self.startup_status["cert_installed"] = CertInstaller.is_installed()
+        cert_dir = Path(self._config.proxy.cert_dir).expanduser()
+        cert_dir.mkdir(parents=True, exist_ok=True)
+        self.cert_path = cert_path(self._config.proxy.cert_dir)
+        self.startup_status["cert_installed"] = await asyncio.to_thread(CertInstaller.is_installed, self.cert_path)
 
         # 3. Database
         self.startup_status["step"] = "Connecting database"
@@ -140,25 +122,25 @@ class StartupOrchestrator:
         await self._batch_writer.start()
         await self._pipeline.start()
 
-        # 7. Proxy runner (only if no conflict)
+        # 7. Proxy runner — any free port works since we set the system proxy ourselves
         self.startup_status["step"] = "Starting proxy"
-        if not conflict.has_conflict:
-            main_loop = asyncio.get_running_loop()
-            self._proxy_runner = ProxyRunner(
-                proxy_config=self._config.proxy,
-                capture_config=self._config.capture,
-                event_queue=self._event_queue,
-                main_loop=main_loop,
-                confdir=str(cert_mgr.cert_dir),
-            )
-            self._proxy_runner.start()
-            
-            # Windows Proxy Management
-            self._proxy_manager = ProxyManager(self._config.proxy.listen_host, self._config.proxy.listen_port)
+        host = self._config.proxy.listen_host
+        port = free_port(host, self._config.proxy.listen_port)
+        self._proxy_runner = ProxyRunner(
+            proxy_config=self._config.proxy.model_copy(update={"listen_port": port}),
+            capture_config=self._config.capture,
+            event_queue=self._event_queue,
+            main_loop=asyncio.get_running_loop(),
+            confdir=str(cert_dir),
+            decrypt=self.startup_status["cert_installed"],
+        )
+        self._proxy_runner.start()
+        if self._config.proxy.set_system_proxy:
+            self._proxy_manager = ProxyManager(host, port)
             self._proxy_manager.enable()
             self.startup_status["proxy_enabled"] = self._proxy_manager.is_enabled
         else:
-            logger.warning("proxy_skipped_due_to_conflict")
+            logger.info("system_proxy_not_set", proxy=f"{host}:{port}")
 
         # 8. Query reader
         self.startup_status["step"] = "Complete"
@@ -181,6 +163,14 @@ class StartupOrchestrator:
             "query_reader": self._query_reader,
             "orchestrator": self,
         }
+
+    async def install_certificate(self) -> bool:
+        """Ask Windows to trust our CA; on success switch the proxy to decrypt mode."""
+        ok = await asyncio.to_thread(CertInstaller.install, self.cert_path)
+        self.startup_status["cert_installed"] = ok
+        if ok and self._proxy_runner:
+            self._proxy_runner.set_decrypt(True)
+        return ok
 
     async def shutdown(self) -> None:
         """Graceful shutdown of all subsystems in reverse order."""
@@ -205,3 +195,16 @@ class StartupOrchestrator:
             await self._db.close()
 
         logger.info("shutdown_complete")
+
+
+def free_port(host: str, preferred: int) -> int:
+    """Return `preferred` if it can be bound, else any free port."""
+    for port in (preferred, 0):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            # No SO_REUSEADDR: on Windows it lets bind() succeed on a port already in use
+            try:
+                s.bind((host, port))
+                return s.getsockname()[1]
+            except OSError:
+                continue
+    raise RuntimeError("no free port available")

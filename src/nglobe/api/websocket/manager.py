@@ -94,24 +94,6 @@ class WebSocketManager:
         for client_id in disconnected:
             await self.disconnect(client_id)
 
-    async def broadcast_status(self, total_requests: int, requests_per_minute: int) -> None:
-        """Send periodic status updates to all clients."""
-        status = {
-            "type": "status",
-            "data": {
-                "proxy_running": True,
-                "total_requests": total_requests,
-                "requests_per_minute": requests_per_minute,
-                "active_connections": len(self._connections),
-                "uptime_seconds": round(time.time() - self._start_time),
-            },
-        }
-        for queue in self._queues.values():
-            try:
-                queue.put_nowait(status)
-            except asyncio.QueueFull:
-                pass
-
     async def _send_loop(self, client_id: str) -> None:
         """Per-client send loop — dequeues messages and sends via WebSocket."""
         websocket = self._connections.get(client_id)

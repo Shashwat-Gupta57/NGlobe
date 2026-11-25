@@ -16,8 +16,8 @@ import { ScatterplotLayer, LineLayer } from '@deck.gl/layers';
 import { useRequestStore } from '../store/requestStore';
 import type { NetworkEvent } from '../types';
 
-// Default user location (Delhi)
-const DEFAULT_USER_LOCATION: [number, number] = [77.209, 28.6139];
+// Until /api/settings/location answers
+const DEFAULT_USER_LOCATION: [number, number] = [0, 20];
 
 // Dark map style
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
@@ -57,12 +57,14 @@ export default function GlobeMap() {
   const deckRef = useRef<Deck | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [deckReady, setDeckReady] = useState(false);
-  const [userLocation] = useState<[number, number]>(DEFAULT_USER_LOCATION);
+  const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_USER_LOCATION);
   const selectedEvent = useRequestStore((s) => s.selectedEvent);
 
   // ── Particle state (lives outside React to avoid re-renders) ──
   const packetsRef = useRef<Packet[]>([]);
-  const lastEventCountRef = useRef(0);
+  // Highest event _seq already turned into a packet. Counting array length
+  // broke once the ring buffer filled up (length stays at MAX_EVENTS forever).
+  const lastSeqRef = useRef(0);
 
   // Deduplicate destinations
   const getDestinations = useCallback((geoEvents: NetworkEvent[]) => {
@@ -82,7 +84,7 @@ export default function GlobeMap() {
       container: mapContainerRef.current,
       style: MAP_STYLE,
       center: userLocation,
-      zoom: 3,
+      zoom: 2,
       pitch: 20,
       bearing: 0,
       attributionControl: false,
@@ -101,6 +103,21 @@ export default function GlobeMap() {
       mapRef.current = null;
     };
   }, []);
+
+  // ── Where packets start: auto-detected or configured on the backend ──
+  useEffect(() => {
+    if (!mapLoaded) return;
+    fetch('/api/settings/location')
+      .then((r) => r.json())
+      .then((loc) => {
+        if (typeof loc.longitude !== 'number' || typeof loc.latitude !== 'number') return;
+        if (!loc.detected && loc.longitude === 0 && loc.latitude === 0) return;
+        const pos: [number, number] = [loc.longitude, loc.latitude];
+        setUserLocation(pos);
+        mapRef.current?.jumpTo({ center: pos });
+      })
+      .catch(() => {});
+  }, [mapLoaded]);
 
   // ── Initialize deck.gl ────────────────────────────────────────
   useEffect(() => {
@@ -171,11 +188,16 @@ export default function GlobeMap() {
 
       // ── Spawn new packets for new events ──────────────────────
       const geoEvents = currentEvents.filter((e) => e.latitude != null && e.longitude != null);
-      const currentCount = geoEvents.length;
+      // Unfiltered newest, so toggling a filter doesn't replay a burst of old events
+      const newestSeq = storeState.events[0]?._seq ?? lastSeqRef.current;
 
-      if (currentCount > lastEventCountRef.current) {
-        // New events arrived — spawn packets for each
-        const newEvents = geoEvents.slice(0, currentCount - lastEventCountRef.current);
+      if (newestSeq > lastSeqRef.current) {
+        // events are newest-first, so new ones are a prefix
+        const newEvents: NetworkEvent[] = [];
+        for (const e of geoEvents) {
+          if ((e._seq ?? 0) <= lastSeqRef.current) break;
+          newEvents.push(e);
+        }
         for (const e of newEvents) {
           packetsRef.current.push({
             id: packetIdCounter++,
@@ -192,7 +214,7 @@ export default function GlobeMap() {
           packetsRef.current = packetsRef.current.slice(-MAX_PACKETS);
         }
       }
-      lastEventCountRef.current = currentCount;
+      lastSeqRef.current = Math.max(lastSeqRef.current, newestSeq);
 
       // ── Remove expired packets ────────────────────────────────
       const totalLife = PACKET_TRAVEL_MS + PACKET_FADE_MS;

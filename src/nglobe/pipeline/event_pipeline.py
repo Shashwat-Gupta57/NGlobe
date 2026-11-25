@@ -70,7 +70,7 @@ class EventPipeline:
                 )
                 logger.debug("pipeline_dequeued", host=raw_event.hostname)
                 event = self._build_network_event(raw_event)
-                logger.info(
+                logger.debug(
                     "pipeline_event_built", 
                     host=event.hostname, 
                     dest_ip=event.destination_ip, 

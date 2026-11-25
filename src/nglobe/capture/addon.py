@@ -1,20 +1,29 @@
-"""Mitmproxy capture addon for NetworkGlobe.
+"""Mitmproxy addon that turns traffic into RawFlowEvents.
 
-This addon is registered with the embedded mitmproxy DumpMaster instance.
-It intercepts HTTP/S flows, extracts metadata into RawFlowEvent objects,
-and pushes them to a thread-safe asyncio.Queue for processing by the
-EventPipeline on the main thread.
+Two modes:
+- decrypt=True  (our CA is trusted): TLS is intercepted, one event per HTTP
+  request with method/path/status/bytes/latency.
+- decrypt=False (CA not trusted): every connection is passed through untouched
+  so the user's internet keeps working; one event per server connection with
+  host + IP, which is all the globe needs.
+
+Hosts that refuse interception (certificate pinning) are switched to
+pass-through on the fly instead of staying broken.
+
+Runs in the proxy thread; events are handed to the main loop thread-safely.
 """
 
 from __future__ import annotations
 
 import asyncio
 import fnmatch
-import time
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
-from mitmproxy import http
+from mitmproxy import ctx, http
+from mitmproxy.proxy.server_hooks import ServerConnectionHookData
+from mitmproxy.tls import TlsData
 
 from nglobe.capture.models import RawFlowEvent
 from nglobe.utils.logging import get_logger
@@ -23,124 +32,103 @@ logger = get_logger(__name__)
 
 
 class CaptureAddon:
-    """Mitmproxy addon that captures HTTP/S flow metadata.
-
-    Runs in the proxy thread. Pushes RawFlowEvent objects to a
-    thread-safe queue consumed by the EventPipeline on the main thread.
-    """
-
     def __init__(
         self,
         queue: asyncio.Queue[RawFlowEvent],
         main_loop: asyncio.AbstractEventLoop,
         ignored_hosts: Optional[list[str]] = None,
         max_path_length: int = 500,
+        decrypt: bool = False,
     ) -> None:
         self._queue = queue
         self._main_loop = main_loop
-        self._ignored_hosts = ignored_hosts or []
+        self._ignored_hosts = [p.lower() for p in (ignored_hosts or [])]
         self._max_path_length = max_path_length
-        self._flow_start_times: dict[str, float] = {}
+        self.decrypt = decrypt
+        self._passthrough_hosts: set[str] = set()
         self._captured_count = 0
 
-    def request(self, flow: http.HTTPFlow) -> None:
-        """Called when a client request is received."""
-        logger.debug("capture_addon_request", host=flow.request.pretty_host, path=flow.request.path)
-        # Record start time for latency calculation
-        self._flow_start_times[flow.id] = time.monotonic()
+    # ── mitmproxy hooks ─────────────────────────────────────────
+
+    def running(self) -> None:
+        self.sync_options()
 
     def response(self, flow: http.HTTPFlow) -> None:
-        """Called when a server response is received.
+        if self.decrypt:
+            self._emit(self._from_flow(flow))
 
-        Extracts all available metadata and pushes a RawFlowEvent
-        to the queue for pipeline processing.
-        """
-        try:
-            hostname = flow.request.pretty_host
-            logger.debug("capture_addon_response", host=hostname, status=flow.response.status_code if flow.response else None)
-            if self._should_ignore(hostname):
-                logger.debug("capture_addon_ignored", host=hostname)
-                return
+    def error(self, flow: http.HTTPFlow) -> None:
+        # Failed requests (resets, timeouts) still went somewhere
+        if self.decrypt and flow.server_conn.peername:
+            self._emit(self._from_flow(flow))
 
-            event = self._extract_metadata(flow)
-            # Thread-safe push to the main loop's queue
-            asyncio.run_coroutine_threadsafe(
-                self._queue.put(event), self._main_loop
-            )
-            logger.debug("capture_addon_queued", host=hostname)
-            self._captured_count += 1
+    def server_connected(self, data: ServerConnectionHookData) -> None:
+        server = data.server
+        if not server.address:
+            return
+        host, port = server.address[0], server.address[1]
+        if self.decrypt and host not in self._passthrough_hosts:
+            return  # covered per-request by response()
+        self._emit(RawFlowEvent(
+            timestamp=datetime.now(timezone.utc),
+            hostname=host,
+            destination_ip=server.peername[0] if server.peername else "",
+            port=port,
+            protocol="HTTPS" if port == 443 else "HTTP" if port == 80 else "TCP",
+            method="CONNECT",
+            tls_version=server.tls_version,
+        ))
 
-            if self._captured_count % 100 == 0:
-                logger.debug(
-                    "capture_milestone",
-                    total_captured=self._captured_count,
-                )
-        except Exception as e:
-            logger.error("capture_error", error=str(e), flow_id=flow.id)
+    def tls_failed_client(self, data: TlsData) -> None:
+        host = data.context.client.sni or (data.context.server.address or ("",))[0]
+        if self.decrypt and host and host not in self._passthrough_hosts:
+            logger.info("tls_interception_refused_passthrough", host=host)
+            self._passthrough_hosts.add(host)
+            self.sync_options()
 
-    def _extract_metadata(self, flow: http.HTTPFlow) -> RawFlowEvent:
-        """Extract all available metadata from a completed flow."""
-        # Calculate latency
-        latency_ms: Optional[float] = None
-        start_time = self._flow_start_times.pop(flow.id, None)
-        if start_time is not None:
-            latency_ms = (time.monotonic() - start_time) * 1000
+    # ── helpers ─────────────────────────────────────────────────
 
-        # Determine protocol
-        protocol = "HTTPS" if flow.request.scheme == "https" else "HTTP"
+    def sync_options(self) -> None:
+        """Push the current mode into mitmproxy. Must run on the proxy loop."""
+        if self.decrypt:
+            patterns = [f"^{re.escape(h)}:" for h in sorted(self._passthrough_hosts)]
+        else:
+            patterns = [".*"]
+        ctx.options.update(ignore_hosts=patterns)
 
-        # Extract TLS version
-        tls_version: Optional[str] = None
-        if flow.server_conn and flow.server_conn.tls_version:
-            tls_version = flow.server_conn.tls_version
+    def _emit(self, event: RawFlowEvent) -> None:
+        if not event.destination_ip or self._should_ignore(event.hostname):
+            return
+        self._captured_count += 1
+        self._main_loop.call_soon_threadsafe(self._queue.put_nowait, event)
 
-        # Resolve destination IP
-        destination_ip = ""
-        if flow.server_conn and flow.server_conn.peername:
-            destination_ip = flow.server_conn.peername[0]
-
-        # Port
-        port = flow.request.port
-
-        # Bytes
-        bytes_sent = len(flow.request.raw_content) if flow.request.raw_content else 0
-        bytes_received = 0
-        if flow.response and flow.response.raw_content:
-            bytes_received = len(flow.response.raw_content)
-
-        # Path (truncated)
-        path = flow.request.path
+    def _from_flow(self, flow: http.HTTPFlow) -> RawFlowEvent:
+        req, resp = flow.request, flow.response
+        path = req.path
         if path and len(path) > self._max_path_length:
             path = path[: self._max_path_length] + "..."
-
-        # Status code
-        status_code: Optional[int] = None
-        if flow.response:
-            status_code = flow.response.status_code
-
+        latency_ms = None
+        if resp and resp.timestamp_end and req.timestamp_start:
+            latency_ms = (resp.timestamp_end - req.timestamp_start) * 1000
         return RawFlowEvent(
             timestamp=datetime.now(timezone.utc),
-            hostname=flow.request.pretty_host,
-            destination_ip=destination_ip,
-            port=port,
-            protocol=protocol,
-            method=flow.request.method,
+            hostname=req.pretty_host,
+            destination_ip=flow.server_conn.peername[0] if flow.server_conn.peername else "",
+            port=req.port,
+            protocol="HTTPS" if req.scheme == "https" else "HTTP",
+            method=req.method,
             path=path,
-            status_code=status_code,
-            tls_version=tls_version,
-            bytes_sent=bytes_sent,
-            bytes_received=bytes_received,
+            status_code=resp.status_code if resp else None,
+            tls_version=flow.server_conn.tls_version,
+            bytes_sent=len(req.raw_content or b""),
+            bytes_received=len(resp.raw_content or b"") if resp else 0,
             latency_ms=latency_ms,
         )
 
     def _should_ignore(self, hostname: str) -> bool:
-        """Check if a hostname matches any ignore pattern."""
-        for pattern in self._ignored_hosts:
-            if fnmatch.fnmatch(hostname.lower(), pattern.lower()):
-                return True
-        return False
+        hostname = hostname.lower()
+        return any(fnmatch.fnmatch(hostname, p) for p in self._ignored_hosts)
 
     @property
     def captured_count(self) -> int:
-        """Return the total number of captured flows."""
         return self._captured_count

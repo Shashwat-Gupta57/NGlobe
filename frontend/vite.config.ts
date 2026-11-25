@@ -8,6 +8,8 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  // Built straight into the Python package, which serves it
+  build: { outDir: '../src/nglobe/ui', emptyOutDir: true },
   server: {
     port: 5173,
     // Proxy API and WebSocket requests to the FastAPI backend

@@ -36,8 +36,9 @@ class GeoIPResolver:
     ) -> None:
         self._city_reader: Optional[maxminddb.Reader] = None
         self._asn_reader: Optional[maxminddb.Reader] = None
-        self._city_path = get_resource_path(city_db_path)
-        self._asn_path = get_resource_path(asn_db_path)
+        self._city_path = _existing(city_db_path, "geoip/data/GeoLite2-City.mmdb")
+        self._asn_path = _existing(asn_db_path, "geoip/data/GeoLite2-ASN.mmdb")
+        self._configured = (city_db_path, asn_db_path)
         self._cache_size = cache_size
         self._lookup_count = 0
         self._cache_hits = 0
@@ -46,7 +47,10 @@ class GeoIPResolver:
         self._cached_resolve = lru_cache(maxsize=cache_size)(self._resolve_uncached)
 
     def open(self) -> None:
-        """Open the GeoLite2 database files."""
+        """Open (or re-open after a download) the GeoLite2 database files."""
+        self.close()
+        self._city_path = _existing(self._configured[0], "geoip/data/GeoLite2-City.mmdb")
+        self._asn_path = _existing(self._configured[1], "geoip/data/GeoLite2-ASN.mmdb")
         if self._city_path.exists():
             self._city_reader = maxminddb.open_database(
                 str(self._city_path), maxminddb.MODE_MMAP_EXT
@@ -69,11 +73,8 @@ class GeoIPResolver:
             self._city_reader.close()
         if self._asn_reader:
             self._asn_reader.close()
+        self._city_reader = self._asn_reader = None
         self._cached_resolve.cache_clear()
-        logger.info(
-            "geoip_closed",
-            total_lookups=self._lookup_count,
-        )
 
     def resolve(self, ip: str) -> GeoLocation:
         """Resolve an IP address to a GeoLocation (cached).
@@ -86,19 +87,9 @@ class GeoIPResolver:
         """
         self._lookup_count += 1
 
-        if not ip:
-            logger.debug("geoip_resolve_failed", reason="Empty IP address")
+        if not ip or self._is_private(ip):
             return GeoLocation()
-            
-        if self._is_private(ip):
-            logger.debug("geoip_resolve_failed", ip=ip, reason="Private/reserved IP address")
-            return GeoLocation()
-
-        result = self._cached_resolve(ip)
-        if result.latitude is None or result.longitude is None:
-            logger.debug("geoip_resolve_failed", ip=ip, reason="Coordinates not found in database")
-            
-        return result
+        return self._cached_resolve(ip)
 
     def _resolve_uncached(self, ip: str) -> GeoLocation:
         """Perform the actual GeoIP lookup (called by cache on miss)."""
@@ -154,7 +145,7 @@ class GeoIPResolver:
     def _is_private(ip: str) -> bool:
         """Check if an IP address is private/reserved."""
         try:
-            return ipaddress.ip_address(ip).is_private
+            return not ipaddress.ip_address(ip).is_global
         except ValueError:
             return False
 
@@ -175,3 +166,9 @@ class GeoIPResolver:
             "city_db_loaded": self._city_reader is not None,
             "asn_db_loaded": self._asn_reader is not None,
         }
+
+
+def _existing(user_path: str, bundled: str) -> Path:
+    """User-downloaded database if present, else the one shipped with the app."""
+    path = Path(user_path).expanduser()
+    return path if path.exists() else get_resource_path(bundled)

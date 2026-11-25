@@ -48,6 +48,8 @@ export interface NetworkEvent {
 
   // Client-side stamp (set when event arrives via WebSocket)
   _receivedAt?: number;
+  // Client-side monotonically increasing arrival number
+  _seq?: number;
 }
 
 /** WebSocket message types from server → client */

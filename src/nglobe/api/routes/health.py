@@ -6,6 +6,8 @@ import time
 
 from fastapi import APIRouter, Request
 
+from nglobe import __version__
+
 router = APIRouter(tags=["health"])
 
 _start_time = time.time()
@@ -55,7 +57,7 @@ async def health_check(request: Request) -> dict:
 
     return {
         "status": "healthy",
-        "version": "0.1.0",
+        "version": __version__,
         "uptime_seconds": uptime,
         "startup_step": startup_step,
         "proxy_running": proxy_running,

@@ -27,9 +27,6 @@ jobs:
         cd frontend
         npm ci
         npm run build
-        cd ..
-        mkdir -p src/nglobe/ui
-        cp -r frontend/dist/* src/nglobe/ui/
         
     - name: Build package
       run: |

@@ -26,16 +26,16 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e .[dev]
+        pip install -e . pytest
         
     - name: Build Frontend
       run: |
         cd frontend
         npm ci
         npm run build
-        cd ..
-        mkdir -p src/nglobe/ui
-        cp -r frontend/dist/* src/nglobe/ui/
+
+    - name: Tests
+      run: pytest -q tests
 
     - name: Check formatting & linting
       run: |

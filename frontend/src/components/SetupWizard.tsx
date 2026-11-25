@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, RefreshCw, XCircle, ShieldAlert, Globe, DownloadCloud } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +16,15 @@ interface HealthStatus {
 export default function SetupWizard({ onComplete }: { onComplete: () => void }) {
   const queryClient = useQueryClient();
   const [completed, setCompleted] = useState(false);
+  const finishing = useRef(false);
+  // The certificate is optional: without it NGlobe still maps every connection
+  const [skipCert, setSkipCert] = useState(() => {
+    try { return localStorage.getItem('nglobe.skipCert') === '1'; } catch { return false; }
+  });
+  const skip = () => {
+    try { localStorage.setItem('nglobe.skipCert', '1'); } catch { /* private mode */ }
+    setSkipCert(true);
+  };
   
   // Form states for GeoIP
   const [accountId, setAccountId] = useState('');
@@ -56,16 +65,18 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
   // Check if everything is fully loaded and complete
   useEffect(() => {
     if (
-      health?.startup_step === 'Complete' && 
-      health?.certificate_installed && 
-      health?.geoip_available
+      !finishing.current &&
+      health?.startup_step === 'Complete' &&
+      (health.certificate_installed || skipCert) &&
+      health.geoip_available
     ) {
+      finishing.current = true;
       setTimeout(() => {
         setCompleted(true);
         setTimeout(onComplete, 1000);
       }, 1500);
     }
-  }, [health, onComplete]);
+  }, [health, onComplete, skipCert]);
 
   const renderCurrentStep = () => {
     if (isError) {
@@ -93,16 +104,17 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
     }
 
     // Step 1: Certificate
-    if (!health.certificate_installed) {
+    if (!health.certificate_installed && !skipCert) {
       return (
         <div className="flex flex-col space-y-4 rounded-xl border border-white/5 bg-white/5 p-6 backdrop-blur-md">
           <div className="flex items-center space-x-3 text-amber-400">
             <ShieldAlert className="h-6 w-6" />
-            <h2 className="text-lg font-bold">HTTPS Certificate Required</h2>
+            <h2 className="text-lg font-bold">See full HTTPS details? (optional)</h2>
           </div>
           <p className="text-sm text-slate-300 leading-relaxed">
-            NGlobe needs to install a local CA certificate to intercept and visualize secure HTTPS traffic. 
-            You will see a Windows prompt asking for permission to install the certificate.
+            NGlobe already maps every connection your machine makes. To also see each request's
+            path, status and size, trust NGlobe's local certificate — Windows will ask you to confirm.
+            No admin rights needed. You can do this later from the top bar.
           </p>
           <button
             onClick={() => installCertMutation.mutate()}
@@ -114,7 +126,13 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
             ) : (
               <ShieldAlert className="h-4 w-4" />
             )}
-            <span>Install Certificate</span>
+            <span>Trust Certificate</span>
+          </button>
+          <button
+            onClick={skip}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-slate-400 hover:text-slate-200"
+          >
+            Continue without (connections only)
           </button>
           {installCertMutation.isError && (
             <p className="text-xs text-rose-400 mt-2">Error: {(installCertMutation.error as Error).message}</p>
@@ -179,7 +197,7 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
         </div>
         {[
           { key: 'Connecting database', checked: health.sqlite_connected },
-          { key: 'Checking certificates', checked: health.certificate_installed },
+          { key: 'Checking certificates', checked: health.certificate_installed || skipCert },
           { key: 'Loading GeoIP database', checked: health.geoip_available },
           { key: 'Starting proxy', checked: health.proxy_running },
         ].map((step, i) => (

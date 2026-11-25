@@ -32,6 +32,7 @@ interface RequestStore {
 }
 
 const MAX_EVENTS = 1000;
+let seq = 0;
 
 function applyFilters(events: NetworkEvent[], filters: FilterState): NetworkEvent[] {
   return events.filter((e) => {
@@ -71,7 +72,7 @@ export const useRequestStore = create<RequestStore>((set, get) => ({
 
   addEvent: (event) => {
     const { events, filters, maxEvents } = get();
-    const stamped = { ...event, _receivedAt: Date.now() };
+    const stamped = { ...event, _receivedAt: Date.now(), _seq: ++seq };
     const updated = [stamped, ...events].slice(0, maxEvents);
     const filtered = applyFilters(updated, filters);
     set({
@@ -84,7 +85,8 @@ export const useRequestStore = create<RequestStore>((set, get) => ({
   addEvents: (newEvents) => {
     const { events, filters, maxEvents } = get();
     const now = Date.now();
-    const stamped = newEvents.map(e => ({ ...e, _receivedAt: now }));
+    // Newest first, matching the order of `events`
+    const stamped = newEvents.map(e => ({ ...e, _receivedAt: now, _seq: ++seq })).reverse();
     const updated = [...stamped, ...events].slice(0, maxEvents);
     const filtered = applyFilters(updated, filters);
     set({

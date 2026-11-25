@@ -35,6 +35,7 @@ class ProxyRunner:
         event_queue: asyncio.Queue[RawFlowEvent],
         main_loop: asyncio.AbstractEventLoop,
         confdir: str,
+        decrypt: bool = False,
     ) -> None:
         self._proxy_config = proxy_config
         self._capture_config = capture_config
@@ -46,6 +47,7 @@ class ProxyRunner:
         self._master: Optional[object] = None
         self._running = False
         self._addon: Optional[CaptureAddon] = None
+        self._decrypt = decrypt
 
     def start(self) -> None:
         """Start the mitmproxy instance in a background thread."""
@@ -59,6 +61,7 @@ class ProxyRunner:
             main_loop=self._main_loop,
             ignored_hosts=self._capture_config.ignored_hosts,
             max_path_length=self._capture_config.max_path_length,
+            decrypt=self._decrypt,
         )
 
         self._thread = threading.Thread(
@@ -127,6 +130,17 @@ class ProxyRunner:
 
         self._running = False
         logger.info("proxy_stopped")
+
+    def set_decrypt(self, decrypt: bool) -> None:
+        """Switch between TLS interception and pass-through without restarting."""
+        addon, loop = self._addon, self._proxy_loop
+        if addon is None or loop is None or addon.decrypt == decrypt:
+            return
+        def apply() -> None:
+            addon.decrypt = decrypt
+            addon.sync_options()
+        loop.call_soon_threadsafe(apply)
+        logger.info("proxy_mode_changed", decrypt=decrypt)
 
     async def _shutdown_master(self) -> None:
         """Gracefully shut down the DumpMaster."""

@@ -1,45 +1,43 @@
-"""Settings endpoints for configuration management."""
+"""Settings endpoints."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+import asyncio
+import urllib.request
 
-from nglobe.api.dependencies import get_config
-from nglobe.config import AppConfig
+from fastapi import APIRouter, Request
+
+from nglobe.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-@router.get("")
-async def get_settings(config: AppConfig = Depends(get_config)) -> dict:
-    """Get current application settings (read-only subset safe for frontend)."""
-    return {
-        "theme": config.theme.model_dump(),
-        "animations": config.animations.model_dump(),
-        "performance": {
-            "frontend_ring_buffer_size": config.performance.frontend_ring_buffer_size,
-        },
-        "location": config.location.model_dump(),
-        "proxy": {
-            "listen_port": config.proxy.listen_port,
-        },
-    }
+def _public_ip() -> str:
+    # Empty ProxyHandler: go direct, not through our own system proxy
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open("https://api.ipify.org", timeout=5) as resp:
+        return resp.read().decode().strip()
 
 
 @router.get("/location")
-async def get_location(config: AppConfig = Depends(get_config)) -> dict:
-    """Get user location settings."""
-    return config.location.model_dump()
-
-
-@router.post("/install-cert")
-async def install_certificate(config: AppConfig = Depends(get_config)) -> dict:
-    """Attempt to install the CA certificate into the Windows root store."""
-    from nglobe.startup.cert_manager import CertManager
-    from nglobe.startup.cert_installer import CertInstaller
-    
-    cert_mgr = CertManager(config.proxy.cert_dir)
-    cert_path = cert_mgr.get_ca_cert_for_install()
-    
-    success = CertInstaller.install(cert_path)
-    return {"success": success}
+async def get_location(request: Request) -> dict:
+    """Where the packets start from: configured coordinates, or auto-detected from public IP."""
+    state = request.app.state
+    cfg = state.config.location
+    if not cfg.auto_detect:
+        return {"latitude": cfg.latitude, "longitude": cfg.longitude, "detected": False}
+    if getattr(state, "detected_location", None) is None:
+        try:
+            geo = state.geo_resolver.resolve(await asyncio.to_thread(_public_ip))
+            if geo.has_coordinates:
+                state.detected_location = {
+                    "latitude": geo.latitude, "longitude": geo.longitude,
+                    "city": geo.city, "country": geo.country_name, "detected": True,
+                }
+        except OSError as e:
+            logger.warning("location_detect_failed", error=str(e))
+    return getattr(state, "detected_location", None) or {
+        "latitude": cfg.latitude, "longitude": cfg.longitude, "detected": False,
+    }

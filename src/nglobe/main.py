@@ -1,83 +1,68 @@
-"""NetworkGlobe — Application entry point.
-
-Loads configuration, initializes logging, creates the FastAPI app,
-and starts the Uvicorn server with the full startup orchestration.
-"""
+"""NGlobe entry point — `nglobe`, `python -m nglobe`, or double-click NGlobe.exe."""
 
 from __future__ import annotations
 
+import argparse
+import ctypes
+import json
 import multiprocessing
 import sys
-from pathlib import Path
+import urllib.request
+import webbrowser
 
-# Ensure the project root is on PYTHONPATH for imports
-_project_root = str(Path(__file__).resolve().parent.parent)
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
+import uvicorn
 
-try:
-    import uvicorn
-except ImportError:
-    print("ERROR: Missing dependencies (uvicorn not found).")
-    print("Are you running within the virtual environment?")
-    print("Run: .venv\\Scripts\\activate (Windows) or source .venv/bin/activate (Mac/Linux)")
-    print("Then try: python main.py")
-    sys.exit(1)
-
+from nglobe import __version__
 from nglobe.api.app import create_app
 from nglobe.config import load_config
+from nglobe.startup.orchestrator import free_port
 from nglobe.utils.logging import get_logger, setup_logging
 
 
-import argparse
+def _nglobe_running_at(url: str) -> bool:
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(f"{url}/api/health", timeout=1) as resp:
+            return json.load(resp).get("status") == "healthy"
+    except (OSError, ValueError):
+        return False
+
 
 def main() -> None:
-    """Application entry point."""
-    parser = argparse.ArgumentParser(
-        prog="nglobe",
-        description="NGlobe - Real-time 3D visualization of network traffic"
-    )
-    parser.add_argument(
-        "command",
-        choices=["start", "version"],
-        help="Command to execute"
-    )
-    
-    args = parser.parse_args()
+    multiprocessing.freeze_support()  # PyInstaller on Windows
 
-    if args.command == "version":
-        print("NGlobe version 0.1.0")
-        sys.exit(0)
+    parser = argparse.ArgumentParser(prog="nglobe", description="Real-time 3D visualization of your network traffic")
+    parser.add_argument("command", nargs="?", default="start", choices=["start", "version"])
+    if parser.parse_args().command == "version":
+        print(f"NGlobe {__version__}")
+        return
 
-    # Required for PyInstaller on Windows
-    multiprocessing.freeze_support()
-
-    # Load centralized configuration
     config = load_config()
-
-    # Initialize structured logging
     setup_logging(config.logging)
-    logger = get_logger("networkglobe")
+    logger = get_logger("nglobe")
 
-    logger.info(
-        "networkglobe_starting",
-        version="0.1.0",
-        server_host=config.server.host,
-        server_port=config.server.port,
-        proxy_port=config.proxy.listen_port,
-    )
+    url = f"http://{config.server.host}:{config.server.port}"
+    if _nglobe_running_at(url):
+        # Second double-click: just bring up the existing instance
+        print(f"NGlobe is already running at {url}")
+        webbrowser.open(url)
+        return
+    config.server.port = free_port(config.server.host, config.server.port)
+    url = f"http://{config.server.host}:{config.server.port}"
 
-    # Create FastAPI application
-    app = create_app(config)
+    if sys.platform == "win32":
+        ctypes.windll.kernel32.SetConsoleTitleW("NGlobe — close this window to stop")  # type: ignore[attr-defined]
+    print(f"\n  NGlobe {__version__}  ->  {url}\n  Close this window (or press Ctrl+C) to stop; your proxy settings are restored.\n")
+    logger.info("nglobe_starting", version=__version__, url=url, proxy_port=config.proxy.listen_port)
 
-    # Start Uvicorn
     uvicorn.run(
-        app,
+        create_app(config),
         host=config.server.host,
         port=config.server.port,
         log_level=config.server.log_level.lower(),
         access_log=False,
     )
+
 
 if __name__ == "__main__":
     main()
