@@ -49,3 +49,6 @@ dist/
 
 # Certificates (generated at runtime)
 certs/
+
+# Leftover pre-consolidation folder (local only)
+backend/
