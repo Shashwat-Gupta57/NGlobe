@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Optional
 
 from nglobe.database.connection import DatabaseConnection
 from nglobe.models import NetworkEvent
@@ -46,16 +45,14 @@ class BatchWriter:
         self._batch_size = batch_size
         self._flush_interval = flush_interval_ms / 1000.0
         self._buffer: list[NetworkEvent] = []
-        self._flush_task: Optional[asyncio.Task[None]] = None
+        self._flush_task: asyncio.Task[None] | None = None
         self._running = False
         self._total_written = 0
 
     async def start(self) -> None:
         """Start the periodic flush timer."""
         self._running = True
-        self._flush_task = asyncio.create_task(
-            self._flush_loop(), name="batch-writer-flush"
-        )
+        self._flush_task = asyncio.create_task(self._flush_loop(), name="batch-writer-flush")
         logger.info(
             "batch_writer_started",
             batch_size=self._batch_size,
@@ -77,6 +74,8 @@ class BatchWriter:
 
     async def on_event(self, event: NetworkEvent) -> None:
         """Receive an event from the EventBus (subscriber callback)."""
+        if "live" in event.tags:
+            return  # its "final" twin carries the byte counts
         self._buffer.append(event)
         if len(self._buffer) >= self._batch_size:
             await self.flush()

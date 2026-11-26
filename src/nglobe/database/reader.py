@@ -6,7 +6,7 @@ typed results for the API layer to serialize.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from nglobe.database.connection import DatabaseConnection
 from nglobe.utils.logging import get_logger
@@ -24,11 +24,11 @@ class QueryReader:
         self,
         page: int = 1,
         limit: int = 50,
-        hostname: Optional[str] = None,
-        country: Optional[str] = None,
-        org: Optional[str] = None,
-        since: Optional[str] = None,
-        until: Optional[str] = None,
+        hostname: str | None = None,
+        country: str | None = None,
+        org: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
     ) -> dict[str, Any]:
         """Get paginated request history with optional filters."""
         conditions: list[str] = []
@@ -54,9 +54,7 @@ class QueryReader:
         offset = (page - 1) * limit
 
         # Count
-        count_row = await self._db.fetchone(
-            f"SELECT COUNT(*) as total FROM requests {where}", tuple(params)
-        )
+        count_row = await self._db.fetchone(f"SELECT COUNT(*) as total FROM requests {where}", tuple(params))
         total = count_row["total"] if count_row else 0
 
         # Fetch
@@ -73,12 +71,12 @@ class QueryReader:
             "pages": (total + limit - 1) // limit if total > 0 else 0,
         }
 
-    async def get_request_by_id(self, request_id: int) -> Optional[dict]:
+    async def get_request_by_id(self, request_id: int) -> dict | None:
         """Get a single request by ID."""
         row = await self._db.fetchone("SELECT * FROM requests WHERE id = ?", (request_id,))
         return dict(row) if row else None
 
-    async def get_top_countries(self, limit: int = 10, since: Optional[str] = None) -> list[dict]:
+    async def get_top_countries(self, limit: int = 10, since: str | None = None) -> list[dict]:
         """Get top countries by request count."""
         where = "WHERE country_code IS NOT NULL"
         params: list[Any] = []
@@ -97,7 +95,7 @@ class QueryReader:
         )
         return [dict(r) for r in rows]
 
-    async def get_top_orgs(self, limit: int = 10, since: Optional[str] = None) -> list[dict]:
+    async def get_top_orgs(self, limit: int = 10, since: str | None = None) -> list[dict]:
         """Get top organizations by request count."""
         where = "WHERE organization IS NOT NULL"
         params: list[Any] = []
@@ -116,7 +114,7 @@ class QueryReader:
         )
         return [dict(r) for r in rows]
 
-    async def get_top_hostnames(self, limit: int = 10, since: Optional[str] = None) -> list[dict]:
+    async def get_top_hostnames(self, limit: int = 10, since: str | None = None) -> list[dict]:
         """Get top hostnames by request count."""
         where = ""
         params: list[Any] = []
@@ -136,7 +134,7 @@ class QueryReader:
         )
         return [dict(r) for r in rows]
 
-    async def get_bandwidth_by_country(self, since: Optional[str] = None) -> list[dict]:
+    async def get_bandwidth_by_country(self, since: str | None = None) -> list[dict]:
         """Get bandwidth consumption grouped by country."""
         where = "WHERE country_code IS NOT NULL"
         params: list[Any] = []
@@ -156,9 +154,7 @@ class QueryReader:
         )
         return [dict(r) for r in rows]
 
-    async def get_request_rate(
-        self, since: Optional[str] = None, granularity: str = "minute"
-    ) -> list[dict]:
+    async def get_request_rate(self, since: str | None = None, granularity: str = "minute") -> list[dict]:
         """Get request rate over time."""
         fmt = {
             "second": "%Y-%m-%dT%H:%M:%S",

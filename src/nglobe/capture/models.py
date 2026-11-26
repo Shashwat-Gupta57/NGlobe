@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
 
 
 @dataclass(slots=True)
@@ -25,10 +24,12 @@ class RawFlowEvent:
     destination_ip: str = ""
     port: int = 443
     protocol: str = "HTTPS"
-    method: Optional[str] = None
-    path: Optional[str] = None
-    status_code: Optional[int] = None
-    tls_version: Optional[str] = None
+    method: str | None = None
+    path: str | None = None
+    status_code: int | None = None
+    tls_version: str | None = None
     bytes_sent: int = 0
     bytes_received: int = 0
-    latency_ms: Optional[float] = None
+    latency_ms: float | None = None
+    # Raw relayed connections: "live" (shown on the globe) then "final" (with bytes, persisted)
+    stage: str | None = None

@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from nglobe.capture.addon import CaptureAddon
 from nglobe.capture.models import RawFlowEvent
 from nglobe.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from nglobe.config import ProxyConfig, CaptureConfig
+    from nglobe.config import CaptureConfig, ProxyConfig
 
 logger = get_logger(__name__)
 
@@ -36,18 +36,20 @@ class ProxyRunner:
         main_loop: asyncio.AbstractEventLoop,
         confdir: str,
         decrypt: bool = False,
+        all_apps: bool = True,
     ) -> None:
         self._proxy_config = proxy_config
         self._capture_config = capture_config
         self._event_queue = event_queue
         self._main_loop = main_loop
         self._confdir = confdir
-        self._thread: Optional[threading.Thread] = None
-        self._proxy_loop: Optional[asyncio.AbstractEventLoop] = None
-        self._master: Optional[object] = None
+        self._thread: threading.Thread | None = None
+        self._proxy_loop: asyncio.AbstractEventLoop | None = None
+        self._master: object | None = None
         self._running = False
-        self._addon: Optional[CaptureAddon] = None
+        self._addon: CaptureAddon | None = None
         self._decrypt = decrypt
+        self._all_apps = all_apps
 
     def start(self) -> None:
         """Start the mitmproxy instance in a background thread."""
@@ -62,6 +64,7 @@ class ProxyRunner:
             ignored_hosts=self._capture_config.ignored_hosts,
             max_path_length=self._capture_config.max_path_length,
             decrypt=self._decrypt,
+            all_apps=self._all_apps,
         )
 
         self._thread = threading.Thread(
@@ -96,6 +99,7 @@ class ProxyRunner:
         from mitmproxy.options import Options
         from mitmproxy.tools.dump import DumpMaster
 
+        ensure_ca(self._confdir)
         opts = Options(
             listen_host=self._proxy_config.listen_host,
             listen_port=self._proxy_config.listen_port,
@@ -119,9 +123,7 @@ class ProxyRunner:
 
         if self._master is not None and self._proxy_loop is not None:
             # Schedule shutdown on the proxy's event loop
-            asyncio.run_coroutine_threadsafe(
-                self._shutdown_master(), self._proxy_loop
-            )
+            asyncio.run_coroutine_threadsafe(self._shutdown_master(), self._proxy_loop)
 
         if self._thread is not None:
             self._thread.join(timeout=5.0)
@@ -132,15 +134,15 @@ class ProxyRunner:
         logger.info("proxy_stopped")
 
     def set_decrypt(self, decrypt: bool) -> None:
-        """Switch between TLS interception and pass-through without restarting."""
-        addon, loop = self._addon, self._proxy_loop
-        if addon is None or loop is None or addon.decrypt == decrypt:
-            return
-        def apply() -> None:
-            addon.decrypt = decrypt
-            addon.sync_options()
-        loop.call_soon_threadsafe(apply)
-        logger.info("proxy_mode_changed", decrypt=decrypt)
+        """Switch between TLS interception and pass-through; applies to new connections."""
+        if self._addon is not None:
+            self._addon.decrypt = decrypt
+            logger.info("proxy_mode_changed", decrypt=decrypt)
+
+    @property
+    def all_apps(self) -> bool | None:
+        """True: every app is captured; False: browsers only; None: still starting/waiting for UAC."""
+        return self._addon.all_apps if self._addon else None
 
     async def _shutdown_master(self) -> None:
         """Gracefully shut down the DumpMaster."""
@@ -158,3 +160,15 @@ class ProxyRunner:
         if self._addon is not None:
             return self._addon.captured_count
         return 0
+
+
+def ensure_ca(confdir: str) -> None:
+    """Create this install's own CA ("NGlobe") before mitmproxy would make a generic one."""
+    from pathlib import Path
+
+    from mitmproxy.certs import CertStore
+
+    path = Path(confdir)
+    if not (path / "mitmproxy-ca.pem").exists():
+        CertStore.create_store(path, "mitmproxy", 2048, organization="NGlobe", cn="NGlobe")
+        logger.info("ca_created", path=str(path))

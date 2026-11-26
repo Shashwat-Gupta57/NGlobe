@@ -7,7 +7,7 @@ and distributes them to all subscribers (BatchWriter, WebSocketManager).
 from __future__ import annotations
 
 import asyncio
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
 from nglobe.models import NetworkEvent
 from nglobe.utils.logging import get_logger
@@ -48,10 +48,7 @@ class EventBus:
         if not self._subscribers:
             return
 
-        tasks = [
-            asyncio.create_task(self._safe_deliver(sub, event))
-            for sub in self._subscribers
-        ]
+        tasks = [asyncio.create_task(self._safe_deliver(sub, event)) for sub in self._subscribers]
         await asyncio.gather(*tasks)
 
     async def _safe_deliver(self, subscriber: Subscriber, event: NetworkEvent) -> None:

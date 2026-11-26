@@ -3,20 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(slots=True, frozen=True)
 class GeoLocation:
     """Result of a GeoIP lookup for a single IP address."""
 
-    country_code: Optional[str] = None
-    country_name: Optional[str] = None
-    city: Optional[str] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    organization: Optional[str] = None
-    asn: Optional[int] = None
+    country_code: str | None = None
+    country_name: str | None = None
+    city: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    organization: str | None = None
+    asn: int | None = None
 
     @property
     def is_resolved(self) -> bool:

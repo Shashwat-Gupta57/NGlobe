@@ -7,7 +7,7 @@ and injected into route handlers.
 
 from __future__ import annotations
 
-from fastapi import Depends, Request
+from fastapi import Request
 
 from nglobe.api.websocket.manager import WebSocketManager
 from nglobe.config import AppConfig

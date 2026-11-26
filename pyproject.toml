@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nglobe"
-version = "0.2.0"
+version = "0.3.0"
 description = "A beautiful, real-time 3D visualization of your machine's network traffic."
 readme = "README.md"
 license = { text = "MIT" }
@@ -52,3 +52,10 @@ artifacts = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nglobe"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Pinned so new ruff releases with wider defaults don't turn CI red
+select = ["E4", "E7", "E9", "F", "I", "UP"]

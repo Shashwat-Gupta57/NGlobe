@@ -7,9 +7,7 @@ used by both the BatchWriter and QueryReader.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Optional
 
 import aiosqlite
 
@@ -28,7 +26,7 @@ class DatabaseConnection:
 
     def __init__(self, db_path: str) -> None:
         self._db_path = Path(db_path)
-        self._conn: Optional[aiosqlite.Connection] = None
+        self._conn: aiosqlite.Connection | None = None
 
     async def open(self) -> None:
         """Open the database connection and initialize schema."""
@@ -57,6 +55,19 @@ class DatabaseConnection:
             logger.info("database_closed")
 
     @property
+    def size_bytes(self) -> int:
+        """On-disk size including the WAL and shared-memory side files."""
+        files = [self._db_path] + [self._db_path.with_name(self._db_path.name + s) for s in ("-wal", "-shm")]
+        return sum(f.stat().st_size for f in files if f.exists())
+
+    async def clear(self) -> None:
+        """Delete all captured history and give the disk space back."""
+        await self.connection.execute("DELETE FROM requests")
+        await self.connection.commit()
+        await self.connection.execute("VACUUM")
+        await self.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    @property
     def connection(self) -> aiosqlite.Connection:
         """Return the active connection (raises if not open)."""
         if self._conn is None:
@@ -72,7 +83,7 @@ class DatabaseConnection:
         await self.connection.executemany(sql, params_list)
         await self.connection.commit()
 
-    async def fetchone(self, sql: str, params: tuple = ()) -> Optional[aiosqlite.Row]:
+    async def fetchone(self, sql: str, params: tuple = ()) -> aiosqlite.Row | None:
         """Execute and fetch one row."""
         cursor = await self.connection.execute(sql, params)
         return await cursor.fetchone()

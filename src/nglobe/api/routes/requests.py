@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends
 
 from nglobe.api.dependencies import get_query_reader
@@ -16,17 +14,22 @@ router = APIRouter(tags=["requests"])
 async def list_requests(
     page: int = 1,
     limit: int = 50,
-    hostname: Optional[str] = None,
-    country: Optional[str] = None,
-    org: Optional[str] = None,
-    since: Optional[str] = None,
-    until: Optional[str] = None,
+    hostname: str | None = None,
+    country: str | None = None,
+    org: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
     reader: QueryReader = Depends(get_query_reader),
 ) -> dict:
     """Get paginated request history with optional filters."""
     return await reader.get_requests(
-        page=page, limit=limit, hostname=hostname,
-        country=country, org=org, since=since, until=until,
+        page=page,
+        limit=limit,
+        hostname=hostname,
+        country=country,
+        org=org,
+        since=since,
+        until=until,
     )
 
 

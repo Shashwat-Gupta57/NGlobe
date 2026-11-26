@@ -33,11 +33,16 @@ async def get_location(request: Request) -> dict:
             geo = state.geo_resolver.resolve(await asyncio.to_thread(_public_ip))
             if geo.has_coordinates:
                 state.detected_location = {
-                    "latitude": geo.latitude, "longitude": geo.longitude,
-                    "city": geo.city, "country": geo.country_name, "detected": True,
+                    "latitude": geo.latitude,
+                    "longitude": geo.longitude,
+                    "city": geo.city,
+                    "country": geo.country_name,
+                    "detected": True,
                 }
         except OSError as e:
             logger.warning("location_detect_failed", error=str(e))
     return getattr(state, "detected_location", None) or {
-        "latitude": cfg.latitude, "longitude": cfg.longitude, "detected": False,
+        "latitude": cfg.latitude,
+        "longitude": cfg.longitude,
+        "detected": False,
     }

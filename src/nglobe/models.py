@@ -16,7 +16,6 @@ migrations when future features land.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -29,7 +28,7 @@ class NetworkEvent(BaseModel):
     """
 
     # ── Core Identity ───────────────────────────────────────────
-    id: Optional[int] = None  # DB-assigned after persist, None before
+    id: int | None = None  # DB-assigned after persist, None before
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # ── Request Metadata ────────────────────────────────────────
@@ -37,32 +36,32 @@ class NetworkEvent(BaseModel):
     destination_ip: str
     port: int = 443
     protocol: str = "HTTPS"  # "HTTP" | "HTTPS"
-    method: Optional[str] = None  # GET, POST, CONNECT, etc.
-    path: Optional[str] = None
-    status_code: Optional[int] = None
+    method: str | None = None  # GET, POST, CONNECT, etc.
+    path: str | None = None
+    status_code: int | None = None
 
     # ── GeoIP Enrichment ────────────────────────────────────────
-    country_code: Optional[str] = None
-    country_name: Optional[str] = None
-    city: Optional[str] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    organization: Optional[str] = None
-    asn: Optional[int] = None
+    country_code: str | None = None
+    country_name: str | None = None
+    city: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    organization: str | None = None
+    asn: int | None = None
 
     # ── Connection Metadata ─────────────────────────────────────
-    tls_version: Optional[str] = None  # "TLSv1.2", "TLSv1.3"
+    tls_version: str | None = None  # "TLSv1.2", "TLSv1.3"
     bytes_sent: int = 0
     bytes_received: int = 0
-    latency_ms: Optional[float] = None
+    latency_ms: float | None = None
 
     # ── Future: Blocking (V2+) ──────────────────────────────────
     blocked: bool = False  # Always False in V1
-    block_reason: Optional[str] = None  # e.g., "domain_rule", "country_rule"
-    rule_id: Optional[int] = None  # FK to block_rules (future)
+    block_reason: str | None = None  # e.g., "domain_rule", "country_rule"
+    rule_id: int | None = None  # FK to block_rules (future)
 
     # ── Future: Process Detection (V3+) ─────────────────────────
-    process_name: Optional[str] = None  # e.g., "chrome.exe", "curl"
+    process_name: str | None = None  # e.g., "chrome.exe", "curl"
 
     # ── Future: Tagging / Labeling ──────────────────────────────
     tags: list[str] = Field(default_factory=list)  # e.g., ["cdn", "analytics"]

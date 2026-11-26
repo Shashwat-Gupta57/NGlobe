@@ -76,14 +76,20 @@ def setup_logging(config: LoggingConfig) -> None:
         log_path = Path(config.file).expanduser()
         log_path.parent.mkdir(parents=True, exist_ok=True)
         file_handler = logging.handlers.RotatingFileHandler(
-            log_path, maxBytes=config.max_size_mb * 1024 * 1024,
-            backupCount=config.backup_count, encoding="utf-8",
+            log_path,
+            maxBytes=config.max_size_mb * 1024 * 1024,
+            backupCount=config.backup_count,
+            encoding="utf-8",
         )
-        file_handler.setFormatter(structlog.stdlib.ProcessorFormatter(
-            processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-                        structlog.dev.ConsoleRenderer(colors=False)],
-            foreign_pre_chain=shared_processors,
-        ))
+        file_handler.setFormatter(
+            structlog.stdlib.ProcessorFormatter(
+                processors=[
+                    structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                    structlog.dev.ConsoleRenderer(colors=False),
+                ],
+                foreign_pre_chain=shared_processors,
+            )
+        )
         root_logger.addHandler(file_handler)
     except OSError as e:
         print(f"Log file unavailable: {e}", file=sys.stderr)

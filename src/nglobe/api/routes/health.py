@@ -17,6 +17,7 @@ _start_time = time.time()
 async def health_check(request: Request) -> dict:
     """Return application health status with live subsystem info."""
     proxy_running = False
+    all_apps = None
     total_requests = 0
     geoip_available = False
     cert_installed = False
@@ -35,6 +36,7 @@ async def health_check(request: Request) -> dict:
     proxy_runner = getattr(request.app.state, "proxy_runner", None)
     if proxy_runner is not None:
         proxy_running = proxy_runner.is_running
+        all_apps = proxy_runner.all_apps
         total_requests = proxy_runner.captured_count
 
     geo_resolver = getattr(request.app.state, "geo_resolver", None)
@@ -51,7 +53,7 @@ async def health_check(request: Request) -> dict:
 
     batch_writer = getattr(request.app.state, "batch_writer", None)
     db_written = batch_writer.total_written if batch_writer else 0
-    
+
     uptime = max(1.0, round(time.time() - _start_time, 1))
     rps = round(pipeline_processed / uptime, 1)
 
@@ -61,6 +63,7 @@ async def health_check(request: Request) -> dict:
         "uptime_seconds": uptime,
         "startup_step": startup_step,
         "proxy_running": proxy_running,
+        "capture_all_apps": all_apps,
         "windows_proxy_enabled": windows_proxy_enabled,
         "certificate_installed": cert_installed,
         "geoip_available": geoip_available,

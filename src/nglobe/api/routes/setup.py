@@ -28,6 +28,14 @@ async def setup_certificate(request: Request) -> dict:
     return {"status": "success"}
 
 
+@router.delete("/certificate")
+async def remove_certificate(request: Request) -> dict:
+    """Untrust NGlobe's certificate (Windows asks to confirm); capture continues in pass-through."""
+    if not await request.app.state.orchestrator.remove_certificate():
+        raise HTTPException(status_code=400, detail="Certificate was not removed (cancelled).")
+    return {"status": "success"}
+
+
 @router.post("/geoip")
 async def setup_geoip(request: Request, payload: GeoIPSetupRequest) -> dict:
     """Download the latest MaxMind GeoLite2 databases (the app ships with a bundled copy)."""

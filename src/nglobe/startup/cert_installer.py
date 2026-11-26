@@ -13,7 +13,6 @@ import hashlib
 import platform
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 from nglobe.utils.logging import get_logger
 
@@ -27,11 +26,9 @@ def cert_path(cert_dir: str) -> Path:
     return Path(cert_dir).expanduser() / "mitmproxy-ca-cert.pem"
 
 
-def thumbprint(pem_path: Path) -> Optional[str]:
+def thumbprint(pem_path: Path) -> str | None:
     try:
-        body = "".join(
-            line for line in pem_path.read_text().splitlines() if line and not line.startswith("-----")
-        )
+        body = "".join(line for line in pem_path.read_text().splitlines() if line and not line.startswith("-----"))
         return hashlib.sha1(base64.b64decode(body)).hexdigest()
     except (OSError, ValueError):
         return None
@@ -48,7 +45,8 @@ class CertInstaller:
         for scope in (["-user"], []):  # current-user store, then machine store
             result = subprocess.run(
                 ["certutil", *scope, "-store", "Root", thumb],
-                capture_output=True, creationflags=_NO_WINDOW,
+                capture_output=True,
+                creationflags=_NO_WINDOW,
             )
             if result.returncode == 0:
                 return True
@@ -65,7 +63,8 @@ class CertInstaller:
         try:
             subprocess.run(
                 ["certutil", "-user", "-addstore", "Root", str(pem_path)],
-                capture_output=True, creationflags=_NO_WINDOW,
+                capture_output=True,
+                creationflags=_NO_WINDOW,
             )
         except OSError as e:
             logger.error("cert_install_failed", error=str(e))
@@ -73,3 +72,16 @@ class CertInstaller:
         installed = CertInstaller.is_installed(pem_path)
         logger.info("cert_install_result", installed=installed)
         return installed
+
+    @staticmethod
+    def uninstall(pem_path: Path) -> bool:
+        """Remove our CA from the current user's Root store. Returns True if it's gone."""
+        thumb = thumbprint(pem_path)
+        if platform.system() != "Windows" or thumb is None:
+            return True
+        subprocess.run(
+            ["certutil", "-user", "-delstore", "Root", thumb],
+            capture_output=True,
+            creationflags=_NO_WINDOW,
+        )
+        return not CertInstaller.is_installed(pem_path)

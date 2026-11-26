@@ -236,7 +236,7 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
             >
               <div className="flex h-full w-full items-center justify-center rounded-full bg-slate-950">
                 <div className="h-16 w-16 rounded-full bg-gradient-to-tr from-indigo-500 to-cyan-500 opacity-20 blur-xl" />
-                <img src="/favicon.svg" alt="Logo" className="absolute h-12 w-12" />
+                <img src="/icon.png" alt="NGlobe" className="absolute h-12 w-12 rounded-full" />
               </div>
             </motion.div>
 

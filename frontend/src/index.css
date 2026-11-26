@@ -130,7 +130,15 @@ body {
 .stat-badge-value { font-size: 14px; font-weight: 600; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
 .stat-badge-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); }
 
-.header-right { display: flex; align-items: center; }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.header-logo-img { width: 22px; height: 22px; border-radius: 6px; }
+.header-btn {
+  font-size: 11px; font-weight: 500; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+  color: var(--color-text-secondary); background: transparent;
+  border: 1px solid var(--color-border, rgba(255,255,255,0.12));
+}
+.header-btn:hover:not(:disabled) { color: var(--color-text-primary); border-color: var(--color-text-tertiary); }
+.header-btn:disabled { opacity: 0.5; cursor: wait; }
 
 .status-indicator { display: flex; align-items: center; gap: 8px; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }

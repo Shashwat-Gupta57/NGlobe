@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from nglobe.api.dependencies import get_ws_manager
 from nglobe.api.websocket.manager import WebSocketManager
 
 router = APIRouter(tags=["websocket"])
@@ -26,7 +25,7 @@ async def ws_events(
         # Keep connection alive — the send loop handles outbound messages
         while True:
             # Read client messages (heartbeats, filter updates, etc.)
-            data = await websocket.receive_text()
+            await websocket.receive_text()
             # Future: handle client commands (filters, pause, etc.)
     except WebSocketDisconnect:
         await ws_manager.disconnect(client_id)

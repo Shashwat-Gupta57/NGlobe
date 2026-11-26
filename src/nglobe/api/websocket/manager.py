@@ -42,9 +42,7 @@ class WebSocketManager:
 
         self._connections[client_id] = websocket
         self._queues[client_id] = asyncio.Queue(maxsize=self._max_queue_size)
-        self._tasks[client_id] = asyncio.create_task(
-            self._send_loop(client_id), name=f"ws-send-{client_id}"
-        )
+        self._tasks[client_id] = asyncio.create_task(self._send_loop(client_id), name=f"ws-send-{client_id}")
 
         logger.info("ws_client_connected", client_id=client_id, total=len(self._connections))
         return client_id
@@ -61,8 +59,8 @@ class WebSocketManager:
     async def broadcast(self, event: NetworkEvent) -> None:
         """Broadcast a NetworkEvent to all connected clients (EventBus subscriber)."""
         logger.debug("ws_manager_broadcasting", host=event.hostname, clients=len(self._connections))
-        if not self._connections:
-            return
+        if not self._connections or "final" in event.tags:
+            return  # the globe already showed this connection's "live" event
 
         self._total_events_broadcast += 1
         message = {"type": "request", "data": event.model_dump(mode="json")}

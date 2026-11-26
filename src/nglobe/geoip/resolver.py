@@ -10,7 +10,6 @@ from __future__ import annotations
 import ipaddress
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 import maxminddb
 
@@ -34,8 +33,8 @@ class GeoIPResolver:
         asn_db_path: str,
         cache_size: int = 10_000,
     ) -> None:
-        self._city_reader: Optional[maxminddb.Reader] = None
-        self._asn_reader: Optional[maxminddb.Reader] = None
+        self._city_reader: maxminddb.Reader | None = None
+        self._asn_reader: maxminddb.Reader | None = None
         self._city_path = _existing(city_db_path, "geoip/data/GeoLite2-City.mmdb")
         self._asn_path = _existing(asn_db_path, "geoip/data/GeoLite2-ASN.mmdb")
         self._configured = (city_db_path, asn_db_path)
@@ -52,17 +51,13 @@ class GeoIPResolver:
         self._city_path = _existing(self._configured[0], "geoip/data/GeoLite2-City.mmdb")
         self._asn_path = _existing(self._configured[1], "geoip/data/GeoLite2-ASN.mmdb")
         if self._city_path.exists():
-            self._city_reader = maxminddb.open_database(
-                str(self._city_path), maxminddb.MODE_MMAP_EXT
-            )
+            self._city_reader = maxminddb.open_database(str(self._city_path), maxminddb.MODE_MMAP_EXT)
             logger.info("geoip_city_db_loaded", path=str(self._city_path))
         else:
             logger.warning("geoip_city_db_missing", path=str(self._city_path))
 
         if self._asn_path.exists():
-            self._asn_reader = maxminddb.open_database(
-                str(self._asn_path), maxminddb.MODE_MMAP_EXT
-            )
+            self._asn_reader = maxminddb.open_database(str(self._asn_path), maxminddb.MODE_MMAP_EXT)
             logger.info("geoip_asn_db_loaded", path=str(self._asn_path))
         else:
             logger.warning("geoip_asn_db_missing", path=str(self._asn_path))

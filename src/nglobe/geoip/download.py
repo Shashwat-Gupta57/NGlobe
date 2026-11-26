@@ -7,9 +7,9 @@ import urllib.request
 from pathlib import Path
 
 from nglobe.utils.logging import get_logger
-from nglobe.utils.resource_path import get_resource_path
 
 logger = get_logger(__name__)
+
 
 class GeoIPDownloader:
     """Downloader for GeoLite2 City and ASN databases."""
@@ -32,22 +32,23 @@ class GeoIPDownloader:
 
     def _download_db(self, edition_id: str) -> bool:
         url = f"https://download.maxmind.com/geoip/databases/{edition_id}/download?suffix=tar.gz"
-        
+
         logger.info("geoip_download_started", edition=edition_id)
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz") as tmp:
                 req = urllib.request.Request(url)
-                
+
                 # Basic Auth
                 import base64
+
                 auth_str = f"{self.account_id}:{self.license_key}"
                 auth_bytes = auth_str.encode("utf-8")
                 auth_b64 = base64.b64encode(auth_bytes).decode("utf-8")
                 req.add_header("Authorization", f"Basic {auth_b64}")
-                
-                with urllib.request.urlopen(req) as response, open(tmp.name, 'wb') as out_file:
+
+                with urllib.request.urlopen(req) as response, open(tmp.name, "wb") as out_file:
                     out_file.write(response.read())
-                
+
                 with tarfile.open(tmp.name, "r:gz") as tar:
                     for member in tar.getmembers():
                         if member.name.endswith(".mmdb"):
@@ -58,7 +59,7 @@ class GeoIPDownloader:
                                 dest.write(source.read())
                             logger.info("geoip_extracted", path=str(target_path))
                             break
-                            
+
             os.unlink(tmp.name)
             return True
         except Exception as e:

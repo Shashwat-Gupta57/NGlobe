@@ -8,7 +8,6 @@ the thread-safe queue and producing canonical NetworkEvent objects.
 from __future__ import annotations
 
 import asyncio
-from typing import Optional
 
 from nglobe.capture.models import RawFlowEvent
 from nglobe.geoip.resolver import GeoIPResolver
@@ -36,7 +35,7 @@ class EventPipeline:
         self._queue = queue
         self._geo_resolver = geo_resolver
         self._event_bus = event_bus
-        self._task: Optional[asyncio.Task[None]] = None
+        self._task: asyncio.Task[None] | None = None
         self._running = False
         self._processed_count = 0
 
@@ -65,19 +64,17 @@ class EventPipeline:
         logger.info("event_pipeline_loop_started")
         while self._running:
             try:
-                raw_event = await asyncio.wait_for(
-                    self._queue.get(), timeout=1.0
-                )
+                raw_event = await asyncio.wait_for(self._queue.get(), timeout=1.0)
                 logger.debug("pipeline_dequeued", host=raw_event.hostname)
                 event = self._build_network_event(raw_event)
                 logger.debug(
-                    "pipeline_event_built", 
-                    host=event.hostname, 
-                    dest_ip=event.destination_ip, 
-                    country=event.country_name, 
-                    city=event.city, 
-                    lat=event.latitude, 
-                    lon=event.longitude
+                    "pipeline_event_built",
+                    host=event.hostname,
+                    dest_ip=event.destination_ip,
+                    country=event.country_name,
+                    city=event.city,
+                    lat=event.latitude,
+                    lon=event.longitude,
                 )
                 await self._event_bus.publish(event)
                 logger.debug("pipeline_published", host=event.hostname)
@@ -114,6 +111,7 @@ class EventPipeline:
             bytes_sent=raw.bytes_sent,
             bytes_received=raw.bytes_received,
             latency_ms=raw.latency_ms,
+            tags=[raw.stage] if raw.stage else [],
         )
 
     @property

@@ -1,112 +1,106 @@
 <div align="center">
-  <img src="./docs/hero_placeholder.gif" alt="NGlobe Hero" width="800"/>
+  <img src="./icon.png" alt="NGlobe" width="120"/>
 
   <h1>NGlobe</h1>
-  <p><b>A beautiful, real-time 3D visualization of your machine's network traffic.</b></p>
+  <p><b>See where your internet traffic goes, live on a globe.</b></p>
 
   <p>
-    <a href="https://pypi.org/project/nglobe/"><img src="https://img.shields.io/pypi/v/nglobe.svg" alt="PyPI Version"></a>
-    <a href="https://pypi.org/project/nglobe/"><img src="https://img.shields.io/pypi/pyversions/nglobe.svg" alt="Python Versions"></a>
-    <a href="https://github.com/shashwat/nglobe/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
+    <a href="https://github.com/Shashwat-Gupta57/NGlobe/releases/latest"><img src="https://img.shields.io/github/v/release/Shashwat-Gupta57/NGlobe" alt="Latest release"></a>
+    <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue" alt="Windows">
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
   </p>
 </div>
 
-<br/>
+Every time your PC talks to the internet, NGlobe draws a little laser from you to wherever that server
+actually is: a CDN in Frankfurt, an ad tracker in Virginia, a game server in Singapore. It's a fun thing to
+leave open for ten minutes once a month and go "huh, *that* app talks to *there*?"
 
-## The Problem
+## Install
 
-Tools like Wireshark and Fiddler are incredibly powerful, but they present network traffic as endless, dense rows of text. They lack **spatial context**. When your machine communicates with the outside world, it's hard to intuitively grasp *where* your data is going, *how much* is being sent, and *how fast* the connections are occurring.
+1. Download **`NGlobe-Setup.exe`** from the [latest release](https://github.com/Shashwat-Gupta57/NGlobe/releases/latest).
+2. Run it and click **Install**. No admin rights are needed. It installs for your user only (about 150 MB).
+3. NGlobe opens in your browser. Windows asks once for admin permission so NGlobe can see **all apps**,
+   not just browsers. You can say no and it still works for browsers.
 
-## Why NGlobe?
+Windows SmartScreen may warn because the installer isn't code-signed. Click *More info → Run anyway*.
 
-**NGlobe** transforms invisible network packets into a stunning, interactive 3D globe. By intercepting your local traffic and mapping it geographically in real-time, NGlobe gives you a visceral understanding of your machine's digital footprint. 
+**To stop NGlobe**, close its console window. Your Windows proxy settings are put back automatically, even if
+it crashes (on the next launch).
 
-Watch packets fly across the globe as lasers, instantly see tracking requests routed to remote continents, and monitor your system's global connections—all through a zero-configuration, one-click installation process.
+**To uninstall**, use *Settings → Apps → NGlobe → Uninstall* or *Start menu → Uninstall NGlobe*. It removes
+everything: the program, your saved history, logs, its certificate and its settings. Nothing NGlobe-related is
+left on the PC.
 
----
+## What you can do
 
-## Features
+| In the top bar | What it does |
+|---|---|
+| **All apps / Browsers only** | Shows what's being captured. *All apps* means the admin prompt was accepted. |
+| **HTTPS details: off/on** | Off: you see every connection (host, IP, city, network owner, bytes). On: NGlobe's own certificate is trusted, so you also see each browser request's path, status code and size. Click again to remove the certificate. |
+| **History 1.2 MB ✕** | How much history NGlobe has saved. Click to wipe it. |
 
-- 🌍 **Interactive 3D Globe**: Built with Deck.gl and MapLibre for buttery-smooth 60fps rendering.
-- 🚀 **Real-time Particle System**: Every network request is visualized as a physical particle flying to its destination server.
-- ⚡ **Zero-Configuration**: Double-click `NGlobe.exe`. Proxy settings are handled for you and GeoIP data is bundled; the HTTPS certificate is optional.
-- 🔍 **Live Traffic Interception**: Powered by `mitmproxy` to capture both HTTP and decrypted HTTPS traffic.
-- 📊 **Rich Analytics**: View exact IPs, autonomous systems (ASN), hostnames, and transfer volumes in a sleek sidebar.
+Click any dot on the globe to see who's there. The sidebar lists live connections, and the analytics panel
+shows top countries, networks and hostnames.
 
-## Architecture
+## How it works (short version)
 
 ```mermaid
 graph LR
-    A[Your Browser / Apps] -->|HTTPS| B(NGlobe MITM Proxy)
-    B -->|Decrypted Request| C{Event Pipeline}
-    C -->|IP Lookup| D[(MaxMind GeoLite2)]
-    D -->|Enriched Event| C
-    C -->|WebSocket Batch| E[React Deck.gl Frontend]
-    C -->|Async Write| F[(SQLite History)]
+    B[Browsers] -->|Windows proxy| P(NGlobe proxy<br/>mitmproxy)
+    A[All other apps] -->|WinDivert, after one UAC prompt| P
+    P --> E{Event pipeline}
+    E -->|IP → place| G[(GeoLite2, offline)]
+    E -->|live| UI[Globe in your browser]
+    E -->|saved| DB[(SQLite in ~/.nglobe)]
 ```
 
-## Technology Stack
+- **Browsers** reach NGlobe through the Windows proxy setting, which NGlobe sets on launch and restores on exit.
+- **Other apps** (games, Discord, Spotify, CLI tools…) are captured with mitmproxy's *local mode*, which needs
+  that one admin prompt per launch. Their traffic is **never decrypted**, only relayed and measured, so nothing
+  breaks.
+- **HTTPS details** use a certificate generated fresh on *your* PC ("NGlobe"), never shared with anyone. Apps
+  that refuse it (certificate pinning) automatically fall back to pass-through.
 
-- **Backend**: Python 3.10+, FastAPI, Mitmproxy, SQLite
-- **Frontend**: React, TypeScript, TailwindCSS, Zustand
-- **Visualization**: Deck.gl, MapLibre GL JS, Framer Motion
+More detail, including config, file locations, building from source and troubleshooting, is in
+**[docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md)**.
 
----
+## Build it yourself
 
-## Installation & Quick Start
+Needs Python 3.10+ and Node.js. Double-click **`build.cmd`** and you get `dist\NGlobe-Setup.exe`.
 
-**Just run it:** double-click `NGlobe.exe`. Your browser opens on the globe and traffic starts flowing in.
-Close the console window to stop. Your Windows proxy settings are put back automatically,
-even after a crash (on the next launch).
-
-**Build the exe yourself** (needs Python 3.10+ and Node.js): double-click `build.cmd` → `dist\NGlobe.exe`.
-
-**Or run from source:**
+Or run from source:
 
 ```bash
 cd frontend && npm ci && npm run build && cd ..   # builds the UI into src/nglobe/ui
 pip install -e .
-python -m nglobe                                   # or: nglobe
+python -m nglobe
 ```
-
-### First run
-
-- **Works immediately.** NGlobe maps every connection your machine makes (host, IP, city, network owner).
-  GeoLite2 databases are bundled, so there's nothing to download.
-- **Optional: full HTTPS detail.** Click *Trust Certificate* in the wizard (or *Enable HTTPS details* in the
-  top bar later) to also see each request's path, status and size. Windows asks you to confirm; no admin rights
-  needed. Apps that refuse interception (certificate pinning) switch to pass-through automatically instead of breaking.
-
-### Configuration
-
-Optional. Copy `src/nglobe/config.toml` to `~/.nglobe/config.toml` and edit it, or use environment variables
-such as `NETWORKGLOBE_SERVER__PORT=9000`. The database, logs and downloaded GeoIP data live in `~/.nglobe/`.
-
----
-
-## Roadmap
-
-- [ ] Support for macOS and Linux proxy auto-configuration.
-- [ ] Protocol filtering (e.g., only show REST API calls).
-- [ ] Historical playback mode (scrub through past traffic).
-- [ ] Custom particle colors based on payload size or HTTP status code.
-
-## Performance
-
-NGlobe is engineered for extreme throughput. The backend utilizes asynchronous pipelines and SQLite batching, while the frontend employs a WebSocket event buffer that batches state updates. This allows NGlobe to render hundreds of concurrent connections per second without lagging the browser.
-
-## Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to set up the development environment, build the frontend, and submit Pull Requests.
 
 ## FAQ
 
-**Q: Does NGlobe send my data anywhere?**  
-A: **No.** The proxy runs on `127.0.0.1`, the SQLite database lives in `~/.nglobe`, the UI is served locally, and IP lookups use offline databases. The one outbound call NGlobe makes itself is to `api.ipify.org`, once per run, to find your public IP for the globe's starting point. Set `location.auto_detect = false` to turn it off. (Map tiles load from CARTO.)
+**Does NGlobe send my data anywhere?**
+No. Everything stays on your PC. The only things it fetches are your public IP from `api.ipify.org` (once per
+run, to place *you* on the globe; set `location.auto_detect = false` to turn it off) and the map tiles from
+CARTO.
 
-**Q: Why do I need to install a certificate?**  
-A: You don't have to. Without it, NGlobe still sees every connection's host and destination. With it, NGlobe decrypts HTTPS locally (as a man-in-the-middle proxy) to also show each request's path, status and size.
+**Firefox shows certificate errors with HTTPS details on.**
+Firefox 120+ trusts Windows' certificates automatically. On older versions, open `about:config` and set
+`security.enterprise_roots.enabled` to `true`, or just leave HTTPS details off.
+
+**Something stopped connecting while NGlobe was open.**
+Close NGlobe, and the proxy is restored instantly. If an app pins certificates, it's put on pass-through after
+its first failed attempt, so retrying usually works.
+
+## Legal-ish stuff
+
+This product includes GeoLite2 data created by MaxMind, available from
+[https://www.maxmind.com](https://www.maxmind.com). The bundled copy may be a few months old, so a server might
+be placed in the wrong city now and then.
+
+To MaxMind, CARTO, the mitmproxy folks and anyone else whose excellent work is in here:
+**pls gng don't take legal action this iis just a weekend project** 🙏
+It's free, it's open source, and nobody is making a single rupee off it.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT. See [LICENSE](LICENSE).

@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import socket
 from pathlib import Path
-from typing import Optional
 
 from nglobe.api.websocket.manager import WebSocketManager
 from nglobe.capture.models import RawFlowEvent
@@ -42,17 +41,17 @@ class StartupOrchestrator:
         self._config = config
 
         # Subsystems — populated during startup
-        self._db: Optional[DatabaseConnection] = None
-        self._geo_resolver: Optional[GeoIPResolver] = None
-        self._event_bus: Optional[EventBus] = None
-        self._pipeline: Optional[EventPipeline] = None
-        self._proxy_runner: Optional[ProxyRunner] = None
-        self._batch_writer: Optional[BatchWriter] = None
-        self._ws_manager: Optional[WebSocketManager] = None
-        self._query_reader: Optional[QueryReader] = None
-        self._event_queue: Optional[asyncio.Queue[RawFlowEvent]] = None
-        self._proxy_manager: Optional[ProxyManager] = None
-        
+        self._db: DatabaseConnection | None = None
+        self._geo_resolver: GeoIPResolver | None = None
+        self._event_bus: EventBus | None = None
+        self._pipeline: EventPipeline | None = None
+        self._proxy_runner: ProxyRunner | None = None
+        self._batch_writer: BatchWriter | None = None
+        self._ws_manager: WebSocketManager | None = None
+        self._query_reader: QueryReader | None = None
+        self._event_queue: asyncio.Queue[RawFlowEvent] | None = None
+        self._proxy_manager: ProxyManager | None = None
+
         self.startup_status = {
             "step": "initializing",
             "proxy_enabled": False,
@@ -133,6 +132,7 @@ class StartupOrchestrator:
             main_loop=asyncio.get_running_loop(),
             confdir=str(cert_dir),
             decrypt=self.startup_status["cert_installed"],
+            all_apps=self._config.capture.all_apps,
         )
         self._proxy_runner.start()
         if self._config.proxy.set_system_proxy:
@@ -171,6 +171,14 @@ class StartupOrchestrator:
         if ok and self._proxy_runner:
             self._proxy_runner.set_decrypt(True)
         return ok
+
+    async def remove_certificate(self) -> bool:
+        """Stop decrypting and remove our CA from Windows' trust store."""
+        if self._proxy_runner:
+            self._proxy_runner.set_decrypt(False)
+        removed = await asyncio.to_thread(CertInstaller.uninstall, self.cert_path)
+        self.startup_status["cert_installed"] = not removed
+        return removed
 
     async def shutdown(self) -> None:
         """Graceful shutdown of all subsystems in reverse order."""

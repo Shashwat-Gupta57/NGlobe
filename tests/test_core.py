@@ -6,10 +6,15 @@ import asyncio
 import base64
 import hashlib
 import socket
+import ssl
+from types import SimpleNamespace
 
 import pytest
-from mitmproxy import connection
-from mitmproxy.proxy.server_hooks import ServerConnectionHookData
+from mitmproxy import connection, tcp
+from mitmproxy.options import Options
+from mitmproxy.proxy.context import Context
+from mitmproxy.proxy.layers import TCPLayer
+from mitmproxy.proxy.mode_specs import ProxyMode
 
 from nglobe.capture.addon import CaptureAddon
 from nglobe.startup import proxy_manager
@@ -46,10 +51,43 @@ def test_enable_twice_keeps_true_original(fake_registry):
     assert fake_registry == original
 
 
-def _server(host: str, port: int, ip: str) -> ServerConnectionHookData:
-    server = connection.Server(address=(host, port))
-    server.peername = (ip, port)
-    return ServerConnectionHookData(server=server, client=connection.Client(peername=("127.0.0.1", 5000), sockname=("127.0.0.1", 8888)))
+def _context(host: str, port: int, mode: str = "regular") -> Context:
+    client = connection.Client(peername=("127.0.0.1", 5000), sockname=("127.0.0.1", 8888))
+    client.proxy_mode = ProxyMode.parse(mode)
+    context = Context(client, Options())
+    context.server = connection.Server(address=(host, port))
+    return context
+
+
+class Intercept:
+    """Stands in for whatever decrypting layer mitmproxy would pick."""
+
+    def __init__(self, context):
+        self.context = context
+
+
+def _decide(addon: CaptureAddon, context: Context, proposed) -> object:
+    nl = SimpleNamespace(context=context, layer=proposed(context))
+    addon.next_layer(nl)
+    return nl.layer
+
+
+def test_what_gets_decrypted():
+    loop = asyncio.new_event_loop()
+    addon = CaptureAddon(asyncio.Queue(), loop, decrypt=True)
+    assert isinstance(_decide(addon, _context("example.com", 443), Intercept), Intercept)
+    # other apps (local mode) are never decrypted
+    assert isinstance(_decide(addon, _context("1.2.3.4", 443, "local"), Intercept), TCPLayer)
+    # pinned hosts fall back to pass-through
+    addon._passthrough_hosts.add("pinned.app")
+    assert isinstance(_decide(addon, _context("pinned.app", 443), Intercept), TCPLayer)
+    # untrusted CA: everything passes through
+    addon.decrypt = False
+    assert isinstance(_decide(addon, _context("example.com", 443), Intercept), TCPLayer)
+    # "ignored" relays get a flow so their bytes are counted
+    layer = _decide(addon, _context("example.com", 443), lambda c: TCPLayer(c, ignore=True))
+    assert isinstance(layer, TCPLayer) and layer.flow is not None
+    loop.close()
 
 
 def _drain(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue) -> list:
@@ -57,27 +95,48 @@ def _drain(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue) -> list:
     return [queue.get_nowait() for _ in range(queue.qsize())]
 
 
-def test_passthrough_mode_emits_per_connection():
+def test_raw_connection_live_then_final_with_bytes_and_sni():
     loop = asyncio.new_event_loop()
     queue: asyncio.Queue = asyncio.Queue()
-    addon = CaptureAddon(queue, loop, ignored_hosts=["localhost"], decrypt=False)
-    addon.server_connected(_server("example.com", 443, "93.184.216.34"))
-    addon.server_connected(_server("localhost", 443, "127.0.0.1"))  # ignored
-    events = _drain(loop, queue)
-    assert [(e.hostname, e.destination_ip, e.protocol) for e in events] == [("example.com", "93.184.216.34", "HTTPS")]
+    addon = CaptureAddon(queue, loop, ignored_hosts=["localhost"])
+    context = _context("93.184.216.34", 443, "local")
+    context.server.peername = ("93.184.216.34", 443)
+    flow = tcp.TCPFlow(context.client, context.server)
+    hello = _client_hello("example.com")
+    for from_client, content in [(True, hello), (False, b"x" * 1000), (True, b"y" * 10)]:
+        flow.messages.append(tcp.TCPMessage(from_client, content))
+        addon.tcp_message(flow)
+    assert flow.messages == []  # payloads aren't kept in RAM
+    addon.tcp_end(flow)
+    live, final = _drain(loop, queue)
+    assert (live.stage, live.hostname, live.bytes_received) == ("live", "example.com", 0)
+    assert (final.stage, final.bytes_sent, final.bytes_received) == ("final", len(hello) + 10, 1000)
     loop.close()
 
 
-def test_decrypt_mode_skips_connections_except_pinned_hosts():
+def test_dns_answers_name_bare_ips():
     loop = asyncio.new_event_loop()
     queue: asyncio.Queue = asyncio.Queue()
-    addon = CaptureAddon(queue, loop, decrypt=True)
-    addon.server_connected(_server("example.com", 443, "93.184.216.34"))
-    assert _drain(loop, queue) == []  # response() covers it
-    addon._passthrough_hosts.add("pinned.app")
-    addon.server_connected(_server("pinned.app", 443, "1.2.3.4"))
-    assert [e.hostname for e in _drain(loop, queue)] == ["pinned.app"]
+    addon = CaptureAddon(queue, loop)
+    addon._dns_names["1.2.3.4"] = "api.example.org"
+    context = _context("1.2.3.4", 5222, "local")
+    context.server.peername = ("1.2.3.4", 5222)
+    flow = tcp.TCPFlow(context.client, context.server)
+    flow.messages.append(tcp.TCPMessage(True, b"hello"))
+    addon.tcp_message(flow)
+    assert _drain(loop, queue)[0].hostname == "api.example.org"
     loop.close()
+
+
+def _client_hello(sni: str) -> bytes:
+    """A real TLS ClientHello, as a browser would send first."""
+    incoming, outgoing = ssl.MemoryBIO(), ssl.MemoryBIO()
+    tls = ssl.create_default_context().wrap_bio(incoming, outgoing, server_hostname=sni)
+    try:
+        tls.do_handshake()
+    except ssl.SSLWantReadError:
+        pass
+    return outgoing.read()
 
 
 def test_free_port_falls_back_when_taken():

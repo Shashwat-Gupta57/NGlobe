@@ -22,7 +22,7 @@ class ProxyConfig(BaseModel):
     listen_port: int = 8888
     ssl_insecure: bool = False
     set_system_proxy: bool = True  # false: point apps at the proxy yourself
-    cert_dir: str = str(Path.home() / ".mitmproxy")  # mitmproxy's default, so an already-trusted CA keeps working
+    cert_dir: str = str(HOME / "certs")  # this install's own "NGlobe" CA
 
 
 class ServerConfig(BaseModel):
@@ -58,6 +58,7 @@ class PerformanceConfig(BaseModel):
 
 
 class CaptureConfig(BaseModel):
+    all_apps: bool = True  # also capture non-browser apps (one UAC prompt per launch)
     ignored_hosts: list[str] = Field(default_factory=lambda: ["localhost", "127.0.0.1", "::1"])
     max_path_length: int = 500
 

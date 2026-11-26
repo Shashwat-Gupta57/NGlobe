@@ -6,16 +6,16 @@ lifespan management, and the full startup/shutdown orchestration.
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 import webbrowser
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from nglobe import __version__
-from nglobe.api.routes import analytics, health, requests, settings, setup, ws
+from nglobe.api.routes import analytics, database, health, requests, settings, setup, ws
 from nglobe.config import AppConfig
 from nglobe.startup.orchestrator import StartupOrchestrator
 from nglobe.utils.logging import get_logger
@@ -82,6 +82,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.include_router(analytics.router, prefix="/api")
     app.include_router(settings.router, prefix="/api")
     app.include_router(setup.router, prefix="/api")
+    app.include_router(database.router, prefix="/api")
     app.include_router(ws.router)
 
     # ── Serve React frontend (production only) ──────────────────

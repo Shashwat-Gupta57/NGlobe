@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends
 
 from nglobe.api.dependencies import get_query_reader
@@ -15,7 +13,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 @router.get("/top-countries")
 async def top_countries(
     limit: int = 10,
-    since: Optional[str] = None,
+    since: str | None = None,
     reader: QueryReader = Depends(get_query_reader),
 ) -> list[dict]:
     return await reader.get_top_countries(limit=limit, since=since)
@@ -24,7 +22,7 @@ async def top_countries(
 @router.get("/top-orgs")
 async def top_orgs(
     limit: int = 10,
-    since: Optional[str] = None,
+    since: str | None = None,
     reader: QueryReader = Depends(get_query_reader),
 ) -> list[dict]:
     return await reader.get_top_orgs(limit=limit, since=since)
@@ -33,7 +31,7 @@ async def top_orgs(
 @router.get("/top-hostnames")
 async def top_hostnames(
     limit: int = 10,
-    since: Optional[str] = None,
+    since: str | None = None,
     reader: QueryReader = Depends(get_query_reader),
 ) -> list[dict]:
     return await reader.get_top_hostnames(limit=limit, since=since)
@@ -41,7 +39,7 @@ async def top_hostnames(
 
 @router.get("/bandwidth")
 async def bandwidth(
-    since: Optional[str] = None,
+    since: str | None = None,
     reader: QueryReader = Depends(get_query_reader),
 ) -> list[dict]:
     return await reader.get_bandwidth_by_country(since=since)
@@ -49,7 +47,7 @@ async def bandwidth(
 
 @router.get("/rate")
 async def request_rate(
-    since: Optional[str] = None,
+    since: str | None = None,
     granularity: str = "minute",
     reader: QueryReader = Depends(get_query_reader),
 ) -> list[dict]:
