@@ -7,6 +7,7 @@ output formats, configurable via config.toml.
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import logging.handlers
 import sys
@@ -32,7 +33,7 @@ def setup_logging(config: LoggingConfig) -> None:
         renderer = structlog.processors.JSONRenderer()
     else:
         renderer = structlog.dev.ConsoleRenderer(
-            colors=sys.stderr.isatty(),
+            colors=_can_color(),
         )
 
     shared_processors: list[structlog.types.Processor] = [
@@ -110,3 +111,8 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
         A structlog BoundLogger with the module name bound.
     """
     return structlog.get_logger(name)
+
+
+def _can_color() -> bool:
+    # structlog raises on Windows when colors are requested without colorama (not always bundled)
+    return sys.stderr.isatty() and (sys.platform != "win32" or importlib.util.find_spec("colorama") is not None)

@@ -162,3 +162,20 @@ def test_app_builds_and_serves_bundled_ui():
 
     app = create_app(load_config())
     assert any(getattr(r, "name", "") == "frontend" for r in app.routes)
+
+
+def test_logging_setup_survives_missing_colorama(monkeypatch, tmp_path):
+    """The released build crashed on double-click: real console + no colorama."""
+    import importlib.util
+    import sys
+
+    import structlog.dev
+
+    from nglobe.config import LoggingConfig
+    from nglobe.utils.logging import setup_logging
+
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(structlog.dev, "colorama", None)
+    real_find_spec = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", lambda n, *a: None if n == "colorama" else real_find_spec(n, *a))
+    setup_logging(LoggingConfig(file=str(tmp_path / "x.log")))  # must not raise
